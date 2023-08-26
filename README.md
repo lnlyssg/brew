@@ -1,4 +1,49 @@
-# Homebrew
+# Homebrew for Linux ARM
+
+> **This Fork**
+>
+> All this fork does is _hack_ to allow ruby installed by rbenv to be used instead of `/usr/bin/ruby`:
+> [GitHub commit - Allow ruby from rbenv to take precedence](https://github.com/huyz/brew-for-linux-arm/commit/18f7e3d5a54078201430fade8ab76fadd9b282ea):
+>
+>
+> ```bash
+> # filter the user environment
+> PATH="/usr/bin:/bin:/usr/sbin:/sbin"
+> PATH="${HOME}/.rbenv/shims:${PATH}"
+>
+> #FILTERED_ENV=()
+> FILTERED_ENV=("RBENV_VERSION=${RBENV_VERSION-}")
+> ```
+>
+> WARNING: since this is an unsupported hack, this may eventually break.
+>
+> To install this Homebrew, you'll first have to install `rbenv` (e.g. Ubuntu 22.04's version from `apt` is ok):
+>
+> ```shell
+> git clone https://github.com/rbenv/ruby-build.git "$(rbenv root)"/plugins/ruby-build  # apt's ruby-build is too out of date
+> rbenv install 2.6.10
+> rbenv shell 2.6.10
+> export HOMEBREW_BREW_GIT_REMOTE=https://github.com/huyz/brew-for-linux-arm
+> export HOMEBREW_DEVELOPER=1
+> /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh | sed '532s/abort/warn/')"
+> ```
+>
+> After installation, to run `brew` you should probably create a `brew` wrapper that contains:
+>
+> ```bash
+> #!/bin/bash
+> [[ -d ~/.rbenv/bin ]] && export PATH="~/.rbenv/bin:$PATH"
+> if command -v rbenv &>/dev/null; then
+>   export PATH="${PATH//$(rbenv root)\/shims:/}"
+>   eval "$(rbenv init -)"
+>   rbenv shell 2.6.10
+> else
+>   echo "Warning: rbenv not found" >&2
+> fi
+> HOMEBREW_BREW_GIT_REMOTE=https://github.com/huyz/brew-for-linux-arm HOMEBREW_DEVELOPER=1 exec /home/linuxbrew/.linuxbrew/bin/brew "$@"
+> ```
+>
+> NOTE: Of course, this is only half the battle. Many official formulas won't work because they weren't written with Linux ARM in mind. (For example, as of 2023-08-26, installing python, which the rust formula requires, will fail.)
 
 [![GitHub release](https://img.shields.io/github/release/Homebrew/brew.svg)](https://github.com/Homebrew/brew/releases)
 
