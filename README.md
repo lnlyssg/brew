@@ -28,6 +28,12 @@
 > /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh | sed '532s/abort/warn/')"
 > ```
 >
+> You'll also need to add the core tap back (nowadays deprecated):
+>
+> ```shell
+> brew tap homebrew/core
+> ```
+>
 > After installation, to run `brew` you should probably create a `brew` wrapper that contains:
 >
 > ```bash
