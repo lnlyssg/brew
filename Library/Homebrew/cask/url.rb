@@ -2,6 +2,7 @@
 # frozen_string_literal: true
 
 require "source_location"
+require "utils/curl"
 
 module Cask
   # Class corresponding to the `url` stanza.
@@ -104,7 +105,7 @@ module Cask
       sig { returns(T.any(T.any(URI::Generic, String), [T.any(URI::Generic, String), Hash])) }
       def call
         if @uri
-          result = curl_output("--fail", "--silent", "--location", @uri)
+          result = ::Utils::Curl.curl_output("--fail", "--silent", "--location", @uri)
           result.assert_success!
 
           page = result.stdout
@@ -148,7 +149,7 @@ module Cask
       params(
         uri:             T.nilable(T.any(URI::Generic, String)),
         verified:        T.nilable(String),
-        using:           T.nilable(Symbol),
+        using:           T.any(Class, Symbol, NilClass),
         tag:             T.nilable(String),
         branch:          T.nilable(String),
         revisions:       T.nilable(T::Array[String]),
@@ -156,7 +157,7 @@ module Cask
         trust_cert:      T.nilable(T::Boolean),
         cookies:         T.nilable(T::Hash[String, String]),
         referer:         T.nilable(T.any(URI::Generic, String)),
-        header:          T.nilable(String),
+        header:          T.nilable(T.any(String, T::Array[String])),
         user_agent:      T.nilable(T.any(Symbol, String)),
         data:            T.nilable(T::Hash[String, String]),
         only_path:       T.nilable(String),
@@ -190,26 +191,26 @@ module Cask
       super(
         if block
           LazyObject.new do
-            uri2, options = *BlockDSL.new(uri, dsl: dsl, &block).call
+            uri2, options = *BlockDSL.new(uri, dsl:, &block).call
             options ||= {}
             DSL.new(uri2, **options)
           end
         else
           DSL.new(
             T.must(uri),
-            verified:   verified,
-            using:      using,
-            tag:        tag,
-            branch:     branch,
-            revisions:  revisions,
-            revision:   revision,
-            trust_cert: trust_cert,
-            cookies:    cookies,
-            referer:    referer,
-            header:     header,
-            user_agent: user_agent,
-            data:       data,
-            only_path:  only_path,
+            verified:,
+            using:,
+            tag:,
+            branch:,
+            revisions:,
+            revision:,
+            trust_cert:,
+            cookies:,
+            referer:,
+            header:,
+            user_agent:,
+            data:,
+            only_path:,
           )
         end
       )
@@ -235,7 +236,7 @@ module Cask
     def raw_url_line
       return @raw_url_line if defined?(@raw_url_line)
 
-      @raw_url_line = Pathname(@caller_location.path)
+      @raw_url_line = Pathname(T.must(@caller_location.path))
                       .each_line
                       .drop(@caller_location.lineno - 1)
                       .first

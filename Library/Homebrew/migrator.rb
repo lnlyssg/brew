@@ -114,7 +114,7 @@ class Migrator
           next
         end
 
-        migrator = Migrator.new(formula, oldname, force: force)
+        migrator = Migrator.new(formula, oldname, force:)
         migrator.migrate
       end
     rescue => e
@@ -228,7 +228,7 @@ class Migrator
   rescue Exception => e # rubocop:disable Lint/RescueException
     onoe "The migration did not complete successfully."
     puts e
-    puts e.backtrace if debug?
+    puts Utils::Backtrace.clean(e) if debug?
     puts "Backing up..."
     ignore_interrupts { backup_oldname }
   ensure
@@ -358,7 +358,7 @@ class Migrator
     rescue Exception => e # rubocop:disable Lint/RescueException
       onoe "An unexpected error occurred during linking"
       puts e
-      puts e.backtrace if debug?
+      puts Utils::Backtrace.clean(e) if debug?
       ignore_interrupts { new_keg.unlink(verbose: verbose?) }
       raise
     end
@@ -404,8 +404,8 @@ class Migrator
 
   # Remove `Cellar/oldname` link if it belongs to newname.
   def unlink_oldname_cellar
-    if (old_cellar.symlink? && !old_cellar.exist?) || (old_cellar.symlink? \
-          && formula.rack.exist? && formula.rack.realpath == old_cellar.realpath)
+    if (old_cellar.symlink? && !old_cellar.exist?) ||
+       (old_cellar.symlink? && formula.rack.exist? && formula.rack.realpath == old_cellar.realpath)
       old_cellar.unlink
     end
   end

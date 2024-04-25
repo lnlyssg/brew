@@ -1,6 +1,7 @@
 # typed: true
 # frozen_string_literal: true
 
+require "system_command"
 require "tempfile"
 require "utils/shell"
 require "utils/formatter"
@@ -20,17 +21,20 @@ module GitHub
   API_URL = "https://api.github.com"
   API_MAX_PAGES = 50
   API_MAX_ITEMS = 5000
+  PAGINATE_RETRY_COUNT = 3
 
   CREATE_GIST_SCOPES = ["gist"].freeze
   CREATE_ISSUE_FORK_OR_PR_SCOPES = ["repo"].freeze
   CREATE_WORKFLOW_SCOPES = ["workflow"].freeze
   ALL_SCOPES = (CREATE_GIST_SCOPES + CREATE_ISSUE_FORK_OR_PR_SCOPES + CREATE_WORKFLOW_SCOPES).freeze
-  GITHUB_PERSONAL_ACCESS_TOKEN_REGEX = /^(?:[a-f0-9]{40}|gh[po]_\w{36,251})$/.freeze
+  GITHUB_PERSONAL_ACCESS_TOKEN_REGEX = /^(?:[a-f0-9]{40}|(?:gh[pousr]|github_pat)_\w{36,251})$/
 
   # Helper functions to access the GitHub API.
   #
   # @api private
   module API
+    extend SystemCommand::Mixin
+
     # Generic API error.
     class Error < RuntimeError
       attr_reader :github_message
@@ -60,7 +64,11 @@ module GitHub
       end
     end
 
-    NO_CREDENTIALS_MESSAGE = <<~MESSAGE
+    GITHUB_IP_ALLOWLIST_ERROR = Regexp.new("Although you appear to have the correct authorization credentials, " \
+                                           "the `(.+)` organization has an IP allow list enabled, " \
+                                           "and your IP address is not permitted to access this resource").freeze
+
+    NO_CREDENTIALS_MESSAGE = <<~MESSAGE.freeze
       No GitHub credentials found in macOS Keychain, GitHub CLI or the environment.
       #{GitHub.pat_blurb}
     MESSAGE
@@ -130,7 +138,7 @@ module GitHub
       env = { "PATH" => PATH.new(HOMEBREW_PREFIX/"opt/gh/bin", ENV.fetch("PATH")) }
       gh_out, _, result = system_command "gh",
                                          args:         ["auth", "token", "--hostname", "github.com"],
-                                         env:          env,
+                                         env:,
                                          print_stderr: false
       return unless result.success?
 
@@ -192,6 +200,7 @@ module GitHub
       credentials_scopes = response_headers["x-oauth-scopes"]
       return if needed_scopes.subset?(Set.new(credentials_scopes.to_s.split(", ")))
 
+      github_permission_link = GitHub.pat_blurb(needed_scopes.to_a)
       needed_scopes = needed_scopes.to_a.join(", ").presence || "none"
       credentials_scopes = "none" if credentials_scopes.blank?
 
@@ -200,7 +209,7 @@ module GitHub
         Your #{what} credentials do not have sufficient scope!
         Scopes required: #{needed_scopes}
         Scopes present:  #{credentials_scopes}
-        #{GitHub.pat_blurb}
+        #{github_permission_link}
       EOS
     end
 
@@ -246,7 +255,7 @@ module GitHub
 
         args += ["--dump-header", T.must(headers_tmpfile.path)]
 
-        output, errors, status = curl_output("--location", url.to_s, *args, secrets: [token])
+        output, errors, status = Utils::Curl.curl_output("--location", url.to_s, *args, secrets: [token])
         output, _, http_code = output.rpartition("\n")
         output, _, http_code = output.rpartition("\n") if http_code == "000"
         headers = headers_tmpfile.read
@@ -275,9 +284,19 @@ module GitHub
       end
     end
 
-    def self.paginate_rest(url, additional_query_params: nil, per_page: 100)
+    def self.paginate_rest(url, additional_query_params: nil, per_page: 100, scopes: [].freeze)
       (1..API_MAX_PAGES).each do |page|
-        result = API.open_rest("#{url}?per_page=#{per_page}&page=#{page}&#{additional_query_params}")
+        retry_count = 1
+        result = begin
+          API.open_rest("#{url}?per_page=#{per_page}&page=#{page}&#{additional_query_params}", scopes:)
+        rescue Error
+          if retry_count < PAGINATE_RETRY_COUNT
+            retry_count += 1
+            retry
+          end
+
+          raise
+        end
         break if result.blank?
 
         yield(result, page)
@@ -285,8 +304,8 @@ module GitHub
     end
 
     def self.open_graphql(query, variables: nil, scopes: [].freeze, raise_errors: true)
-      data = { query: query, variables: variables }
-      result = open_rest("#{API_URL}/graphql", scopes: scopes, data: data, request_method: "POST")
+      data = { query:, variables: }
+      result = open_rest("#{API_URL}/graphql", scopes:, data:, request_method: "POST")
 
       if raise_errors
         if result["errors"].present?
@@ -296,6 +315,28 @@ module GitHub
         result["data"]
       else
         result
+      end
+    end
+
+    sig {
+      params(
+        query:     String,
+        variables: T.nilable(T::Hash[Symbol, T.untyped]),
+        _block:    T.proc.params(data: T::Hash[String, T.untyped]).returns(T::Hash[String, T.untyped]),
+      ).void
+    }
+    def self.paginate_graphql(query, variables: nil, &_block)
+      result = API.open_graphql(query, variables:)
+
+      has_next_page = T.let(true, T::Boolean)
+      variables ||= {}
+      while has_next_page
+        page_info = yield result
+        has_next_page = page_info["hasNextPage"]
+        if has_next_page
+          variables[:after] = page_info["endCursor"]
+          result = API.open_graphql(query, variables:)
+        end
       end
     end
 

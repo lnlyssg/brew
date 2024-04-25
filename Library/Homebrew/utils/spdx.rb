@@ -8,9 +8,6 @@ require "utils/github"
 #
 # @api private
 module SPDX
-  include Utils::Curl
-  extend Utils::Curl
-
   module_function
 
   DATA_PATH = (HOMEBREW_DATA_PATH/"spdx").freeze
@@ -34,8 +31,8 @@ module SPDX
 
   def download_latest_license_data!(to: DATA_PATH)
     data_url = "https://raw.githubusercontent.com/spdx/license-list-data/#{latest_tag}/json/"
-    curl_download("#{data_url}licenses.json", to: to/"spdx_licenses.json")
-    curl_download("#{data_url}exceptions.json", to: to/"spdx_exceptions.json")
+    Utils::Curl.curl_download("#{data_url}licenses.json", to: to/"spdx_licenses.json")
+    Utils::Curl.curl_download("#{data_url}exceptions.json", to: to/"spdx_exceptions.json")
   end
 
   def parse_license_expression(license_expression)
@@ -47,14 +44,14 @@ module SPDX
       licenses.push license_expression
     when Hash, Array
       if license_expression.is_a? Hash
-        license_expression = license_expression.map do |key, value|
+        license_expression = license_expression.filter_map do |key, value|
           if key.is_a? String
             licenses.push key
             exceptions.push value[:with]
             next
           end
           value
-        end.compact
+        end
       end
 
       license_expression.each do |license|
@@ -105,7 +102,7 @@ module SPDX
           expressions.push "#{hash_type} with #{license_expression[hash_type][:with]}"
         else
           expressions += license_expression[hash_type].map do |license|
-            license_expression_to_string license, bracket: true, hash_type: hash_type
+            license_expression_to_string license, bracket: true, hash_type:
           end
         end
       else
@@ -199,7 +196,7 @@ module SPDX
 
     name, version, = license_version_info license
 
-    forbidden_licenses.each do |_, license_info|
+    forbidden_licenses.each_value do |license_info|
       forbidden_name, forbidden_version, forbidden_or_later = *license_info
       next if forbidden_name != name
 

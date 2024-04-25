@@ -1,7 +1,11 @@
 # typed: true
 # frozen_string_literal: true
 
+require "system_command"
+
 class Keg
+  include SystemCommand::Mixin
+
   GENERIC_KEG_LINK_DIRECTORIES = (remove_const :KEG_LINK_DIRECTORIES).freeze
   KEG_LINK_DIRECTORIES = (GENERIC_KEG_LINK_DIRECTORIES + ["Frameworks"]).freeze
   GENERIC_MUST_EXIST_SUBDIRECTORIES = (remove_const :MUST_EXIST_SUBDIRECTORIES).freeze
@@ -28,7 +32,11 @@ class Keg
 
   def codesign_patched_binary(file)
     return if MacOS.version < :big_sur
-    return unless Hardware::CPU.arm?
+
+    unless Hardware::CPU.arm?
+      result = system_command("codesign", args: ["--verify", file], print_stderr: false)
+      return unless result.stderr.match?(/invalid signature/i)
+    end
 
     odebug "Codesigning #{file}"
     prepare_codesign_writable_files(file) do
@@ -74,7 +82,7 @@ class Keg
     files = result.stdout.lines.map { |f| Pathname(f.chomp) }
     saved_perms = {}
     files.each do |f|
-      unless f.writable_real?
+      unless f.writable?
         saved_perms[f] = f.stat.mode
         FileUtils.chmod "u+rw", f.to_path
       end

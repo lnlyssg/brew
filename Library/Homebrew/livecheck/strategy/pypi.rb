@@ -19,13 +19,13 @@ module Homebrew
       class Pypi
         NICE_NAME = "PyPI"
 
-        # The `Regexp` used to extract the package name and suffix (e.g., file
+        # The `Regexp` used to extract the package name and suffix (e.g. file
         # extension) from the URL basename.
         FILENAME_REGEX = /
           (?<package_name>.+)- # The package name followed by a hyphen
           .*? # The version string
           (?<suffix>\.tar\.[a-z0-9]+|\.[a-z0-9]+)$ # Filename extension
-        /ix.freeze
+        /ix
 
         # The `Regexp` used to determine if the strategy applies to the URL.
         URL_MATCH_REGEX = %r{
@@ -33,7 +33,7 @@ module Homebrew
           /packages
           (?:/[^/]+)+ # The hexadecimal paths before the filename
           /#{FILENAME_REGEX.source.strip} # The filename
-        }ix.freeze
+        }ix
 
         # Whether the strategy can be applied to the provided URL.
         #
@@ -84,7 +84,7 @@ module Homebrew
           params(
             url:    String,
             regex:  T.nilable(Regexp),
-            unused: T.nilable(T::Hash[Symbol, T.untyped]),
+            unused: T.untyped,
             block:  T.nilable(Proc),
           ).returns(T::Hash[Symbol, T.untyped])
         }

@@ -2,7 +2,7 @@
 
 require "utils/autoremove"
 
-describe Utils::Autoremove do
+RSpec.describe Utils::Autoremove do
   shared_context "with formulae for dependency testing" do
     let(:formula_with_deps) do
       formula "zero" do
@@ -54,7 +54,7 @@ describe Utils::Autoremove do
     include_context "with formulae for dependency testing"
 
     before do
-      allow(Formulary).to receive(:factory).with("three").and_return(formula_is_build_dep)
+      allow(Formulary).to receive(:factory).with("three", { warn: false }).and_return(formula_is_build_dep)
     end
 
     context "when formulae are bottles" do

@@ -1,6 +1,7 @@
 # typed: true
 # frozen_string_literal: true
 
+require "attrable"
 require "locale"
 require "lazy_object"
 require "livecheck"
@@ -84,7 +85,15 @@ module Cask
       :url,
       :version,
       :appdir,
-      :discontinued?,
+      :deprecate!,
+      :deprecated?,
+      :deprecation_date,
+      :deprecation_reason,
+      :disable!,
+      :disabled?,
+      :disable_date,
+      :disable_reason,
+      :discontinued?, # TODO: remove once discontinued? is removed (4.5.0)
       :livecheck,
       :livecheckable?,
       :on_system_blocks_exist?,
@@ -93,12 +102,12 @@ module Cask
       *ARTIFACT_BLOCK_CLASSES.flat_map { |klass| [klass.dsl_key, klass.uninstall_dsl_key] },
     ]).freeze
 
-    extend Predicable
+    extend Attrable
     include OnSystem::MacOSOnly
 
-    attr_reader :cask, :token
+    attr_reader :cask, :token, :deprecation_date, :deprecation_reason, :disable_date, :disable_reason
 
-    attr_predicate :on_system_blocks_exist?
+    attr_predicate :on_system_blocks_exist?, :deprecated?, :disabled?, :livecheckable?
 
     def initialize(cask)
       @cask = cask
@@ -119,20 +128,20 @@ module Cask
     end
 
     def set_unique_stanza(stanza, should_return)
-      return instance_variable_get("@#{stanza}") if should_return
+      return instance_variable_get(:"@#{stanza}") if should_return
 
       unless @cask.allow_reassignment
-        if instance_variable_defined?("@#{stanza}") && !@called_in_on_system_block
+        if instance_variable_defined?(:"@#{stanza}") && !@called_in_on_system_block
           raise CaskInvalidError.new(cask, "'#{stanza}' stanza may only appear once.")
         end
 
-        if instance_variable_defined?("@#{stanza}_set_in_block") && @called_in_on_system_block
+        if instance_variable_defined?(:"@#{stanza}_set_in_block") && @called_in_on_system_block
           raise CaskInvalidError.new(cask, "'#{stanza}' stanza may only be overridden once.")
         end
       end
 
-      instance_variable_set("@#{stanza}_set_in_block", true) if @called_in_on_system_block
-      instance_variable_set("@#{stanza}", yield)
+      instance_variable_set(:"@#{stanza}_set_in_block", true) if @called_in_on_system_block
+      instance_variable_set(:"@#{stanza}", yield)
     rescue CaskInvalidError
       raise
     rescue => e
@@ -171,12 +180,11 @@ module Cask
       raise CaskInvalidError.new(cask, "No default language specified.") if @language_blocks.default.nil?
 
       locales = cask.config.languages
-                    .map do |language|
+                    .filter_map do |language|
                       Locale.parse(language)
                     rescue Locale::ParserError
                       nil
                     end
-                    .compact
 
       locales.each do |locale|
         key = locale.detect(@language_blocks.keys)
@@ -201,9 +209,9 @@ module Cask
 
       set_unique_stanza(:url, args.empty? && options.empty? && !block) do
         if block
-          URL.new(*args, **options, caller_location: caller_location, dsl: self, &block)
+          URL.new(*args, **options, caller_location:, dsl: self, &block)
         else
-          URL.new(*args, **options, caller_location: caller_location)
+          URL.new(*args, **options, caller_location:)
         end
       end
     end
@@ -211,7 +219,7 @@ module Cask
     # @api public
     def appcast(*args, **kwargs)
       set_unique_stanza(:appcast, args.empty? && kwargs.empty?) do
-        odeprecated "the `appcast` stanza", "the `livecheck` stanza"
+        odisabled "the `appcast` stanza", "the `livecheck` stanza"
         true
       end
     end
@@ -241,7 +249,7 @@ module Cask
       set_unique_stanza(:sha256, should_return) do
         @on_system_blocks_exist = true if arm.present? || intel.present?
 
-        val = arg || on_arch_conditional(arm: arm, intel: intel)
+        val = arg || on_arch_conditional(arm:, intel:)
         case val
         when :no_check
           val
@@ -260,7 +268,7 @@ module Cask
       set_unique_stanza(:arch, should_return) do
         @on_system_blocks_exist = true
 
-        on_arch_conditional(arm: arm, intel: intel)
+        on_arch_conditional(arm:, intel:)
       end
     end
 
@@ -316,6 +324,7 @@ module Cask
     end
 
     def discontinued?
+      # odeprecated "`discontinued?`", "`deprecated?` or `disabled?`"
       @caveats&.discontinued? == true
     end
 
@@ -337,15 +346,34 @@ module Cask
       @livecheck.instance_eval(&block)
     end
 
-    def livecheckable?
-      @livecheckable == true
+    # @api public
+    def deprecate!(date:, because:)
+      @deprecation_date = Date.parse(date)
+      return if @deprecation_date > Date.today
+
+      @deprecation_reason = because
+      @deprecated = true
+    end
+
+    # @api public
+    def disable!(date:, because:)
+      @disable_date = Date.parse(date)
+
+      if @disable_date > Date.today
+        @deprecation_reason = because
+        @deprecated = true
+        return
+      end
+
+      @disable_reason = because
+      @disabled = true
     end
 
     ORDINARY_ARTIFACT_CLASSES.each do |klass|
       define_method(klass.dsl_key) do |*args, **kwargs|
         T.bind(self, DSL)
         if [*artifacts.map(&:class), klass].include?(Artifact::StageOnly) &&
-           (artifacts.map(&:class) & ACTIVATABLE_ARTIFACT_CLASSES).any?
+           artifacts.map(&:class).intersect?(ACTIVATABLE_ARTIFACT_CLASSES)
           raise CaskInvalidError.new(cask, "'stage_only' must be the only activatable artifact.")
         end
 

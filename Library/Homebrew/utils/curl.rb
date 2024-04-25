@@ -3,19 +3,21 @@
 
 require "open3"
 
-require "extend/time"
+require "utils/timer"
+require "system_command"
 
 module Utils
   # Helper function for interacting with `curl`.
   #
   # @api private
   module Curl
-    using TimeRemaining
+    include SystemCommand::Mixin
+    extend SystemCommand::Mixin
 
     # This regex is used to extract the part of an ETag within quotation marks,
     # ignoring any leading weak validator indicator (`W/`). This simplifies
     # ETag comparison in `#curl_check_http_content`.
-    ETAG_VALUE_REGEX = %r{^(?:[wW]/)?"((?:[^"]|\\")*)"}.freeze
+    ETAG_VALUE_REGEX = %r{^(?:[wW]/)?"((?:[^"]|\\")*)"}
 
     # HTTP responses and body content are typically separated by a double
     # `CRLF` (whereas HTTP header lines are separated by a single `CRLF`).
@@ -23,8 +25,8 @@ module Utils
     HTTP_RESPONSE_BODY_SEPARATOR = "\r\n\r\n"
 
     # This regex is used to isolate the parts of an HTTP status line, namely
-    # the status code and any following descriptive text (e.g., `Not Found`).
-    HTTP_STATUS_LINE_REGEX = %r{^HTTP/.* (?<code>\d+)(?: (?<text>[^\r\n]+))?}.freeze
+    # the status code and any following descriptive text (e.g. `Not Found`).
+    HTTP_STATUS_LINE_REGEX = %r{^HTTP/.* (?<code>\d+)(?: (?<text>[^\r\n]+))?}
 
     private_constant :ETAG_VALUE_REGEX, :HTTP_RESPONSE_BODY_SEPARATOR, :HTTP_STATUS_LINE_REGEX
 
@@ -106,13 +108,13 @@ module Utils
         args << "--fail"
         args << "--progress-bar" unless Context.current.verbose?
         args << "--verbose" if Homebrew::EnvConfig.curl_verbose?
-        args << "--silent" unless $stdout.tty?
+        args << "--silent" if !$stdout.tty? || Context.current.quiet?
       end
 
       args << "--connect-timeout" << connect_timeout.round(3) if connect_timeout.present?
       args << "--max-time" << max_time.round(3) if max_time.present?
 
-      # A non-positive integer (e.g., 0) or `nil` will omit this argument
+      # A non-positive integer (e.g. 0) or `nil` will omit this argument
       args << "--retry" << retries if retries&.positive?
 
       args << "--retry-max-time" << retry_max_time.round if retry_max_time.present?
@@ -130,17 +132,17 @@ module Utils
       end_time = Time.now + timeout if timeout
 
       command_options = {
-        secrets:      secrets,
-        print_stdout: print_stdout,
-        print_stderr: print_stderr,
-        debug:        debug,
-        verbose:      verbose,
+        secrets:,
+        print_stdout:,
+        print_stderr:,
+        debug:,
+        verbose:,
       }.compact
 
-      result = system_command curl_executable(use_homebrew_curl: use_homebrew_curl),
+      result = system_command curl_executable(use_homebrew_curl:),
                               args:    curl_args(*args, **options),
-                              env:     env,
-                              timeout: end_time&.remaining,
+                              env:,
+                              timeout: Utils::Timer.remaining(end_time),
                               **command_options
 
       return result if result.success? || args.include?("--http1.1")
@@ -151,7 +153,7 @@ module Utils
       if result.exit_status == 16
         return curl_with_workarounds(
           *args, "--http1.1",
-          timeout: end_time&.remaining, **command_options, **options
+          timeout: Utils::Timer.remaining(end_time), **command_options, **options
         )
       end
 
@@ -173,7 +175,7 @@ module Utils
     end
 
     def curl(*args, print_stdout: true, **options)
-      result = curl_with_workarounds(*args, print_stdout: print_stdout, **options)
+      result = curl_with_workarounds(*args, print_stdout:, **options)
       result.assert_success!
       result
     end
@@ -279,11 +281,11 @@ module Utils
           secure_details = begin
             curl_http_content_headers_and_checksum(
               secure_url,
-              specs:             specs,
+              specs:,
               hash_needed:       true,
-              use_homebrew_curl: use_homebrew_curl,
-              user_agent:        user_agent,
-              referer:           referer,
+              use_homebrew_curl:,
+              user_agent:,
+              referer:,
             )
           rescue Timeout::Error
             next
@@ -298,25 +300,29 @@ module Utils
       end
 
       details = T.let(nil, T.nilable(T::Hash[Symbol, T.untyped]))
+      attempts = 0
       user_agents.each do |user_agent|
-        details =
-          curl_http_content_headers_and_checksum(
+        loop do
+          details = curl_http_content_headers_and_checksum(
             url,
-            specs:             specs,
-            hash_needed:       hash_needed,
-            use_homebrew_curl: use_homebrew_curl,
-            user_agent:        user_agent,
-            referer:           referer,
+            specs:,
+            hash_needed:,
+            use_homebrew_curl:,
+            user_agent:,
+            referer:,
           )
+
+          # Retry on network issues
+          break if details[:exit_status] != 52 && details[:exit_status] != 56
+
+          attempts += 1
+          break if attempts >= Homebrew::EnvConfig.curl_retries.to_i
+        end
+
         break if http_status_ok?(details[:status_code])
       end
 
-      unless details[:status_code]
-        # Hack around https://github.com/Homebrew/brew/issues/3199
-        return if MacOS.version == :el_capitan
-
-        return "The #{url_type} #{url} is not reachable"
-      end
+      return "The #{url_type} #{url} is not reachable" unless details[:status_code]
 
       unless http_status_ok?(details[:status_code])
         return if details[:responses].any? do |response|
@@ -412,12 +418,12 @@ module Utils
       max_time = hash_needed ? 600 : 25
       output, _, status = curl_output(
         *specs, "--dump-header", "-", "--output", file.path, "--location", url,
-        use_homebrew_curl: use_homebrew_curl,
+        use_homebrew_curl:,
         connect_timeout:   15,
-        max_time:          max_time,
+        max_time:,
         retry_max_time:    max_time,
-        user_agent:        user_agent,
-        referer:           referer
+        user_agent:,
+        referer:
       )
 
       parsed_output = parse_curl_output(output)
@@ -447,19 +453,20 @@ module Utils
           end
         end
         file_contents = File.read(T.must(file.path), **open_args)
-        file_hash = Digest::SHA2.hexdigest(file_contents) if hash_needed
+        file_hash = Digest::SHA256.hexdigest(file_contents) if hash_needed
       end
 
       {
-        url:            url,
-        final_url:      final_url,
-        status_code:    status_code,
-        headers:        headers,
-        etag:           etag,
-        content_length: content_length,
+        url:,
+        final_url:,
+        exit_status:    status.exitstatus,
+        status_code:,
+        headers:,
+        etag:,
+        content_length:,
         file:           file_contents,
-        file_hash:      file_hash,
-        responses:      responses,
+        file_hash:,
+        responses:,
       }
     ensure
       T.must(file).unlink
@@ -507,7 +514,7 @@ module Utils
         responses << response if response.present?
       end
 
-      { responses: responses, body: output }
+      { responses:, body: output }
     end
 
     # Returns the URL from the last location header found in cURL responses,
@@ -609,6 +616,3 @@ module Utils
     end
   end
 end
-
-# FIXME: Include `Utils::Curl` explicitly everywhere it is used.
-include Utils::Curl # rubocop:disable Style/MixinUsage

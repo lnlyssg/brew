@@ -12,7 +12,7 @@ class DevelopmentTools
       # Give the name of the binary you look for as a string to this method
       # in order to get the full path back as a Pathname.
       (@locate ||= {}).fetch(tool) do |key|
-        @locate[key] = if File.executable?(path = "/usr/bin/#{tool}")
+        @locate[key] = if File.executable?((path = "/usr/bin/#{tool}"))
           Pathname.new path
         # Homebrew GCCs most frequently; much faster to check this before xcrun
         elsif (path = HOMEBREW_PREFIX/"bin/#{tool}").executable?
@@ -34,6 +34,14 @@ class DevelopmentTools
     sig { returns(String) }
     def custom_installation_instructions
       installation_instructions
+    end
+
+    sig { params(resource: String).returns(String) }
+    def insecure_download_warning(resource)
+      package = curl_handles_most_https_certificates? ? "ca-certificates" : "curl"
+      "Using `--insecure` with curl to download #{resource} because we need it to run " \
+        "`brew install #{package}` in order to download securely from now on. " \
+        "Checksums will still be verified."
     end
 
     sig { returns(Symbol) }
@@ -75,6 +83,9 @@ class DevelopmentTools
       end
     end
 
+    # Get the GCC version.
+    #
+    # @api internal
     sig { params(cc: String).returns(Version) }
     def gcc_version(cc)
       (@gcc_version ||= {}).fetch(cc) do
@@ -121,6 +132,17 @@ class DevelopmentTools
     sig { returns(T::Boolean) }
     def curl_handles_most_https_certificates?
       true
+    end
+
+    sig { returns(T::Boolean) }
+    def ca_file_substitution_required?
+      (!ca_file_handles_most_https_certificates? || ENV["HOMEBREW_FORCE_BREWED_CA_CERTIFICATES"].present?) &&
+        !(HOMEBREW_PREFIX/"etc/ca-certificates/cert.pem").exist?
+    end
+
+    sig { returns(T::Boolean) }
+    def curl_substitution_required?
+      !curl_handles_most_https_certificates? && !HOMEBREW_BREWED_CURL_PATH.exist?
     end
 
     sig { returns(T::Boolean) }

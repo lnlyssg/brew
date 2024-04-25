@@ -24,8 +24,6 @@ class Version
 
     sig { params(val: String).returns(Token) }
     def self.create(val)
-      raise TypeError, "Token value must be a string; got a #{val.class} (#{val})" unless val.respond_to?(:to_str)
-
       case val
       when /\A#{AlphaToken::PATTERN}\z/o   then AlphaToken
       when /\A#{BetaToken::PATTERN}\z/o    then BetaToken
@@ -96,6 +94,9 @@ class Version
     def null?
       false
     end
+
+    sig { returns(T::Boolean) }
+    def blank? = null?
   end
 
   # A pseudo-token representing the absence of a token.
@@ -129,6 +130,9 @@ class Version
       true
     end
 
+    sig { returns(T::Boolean) }
+    def blank? = true
+
     sig { override.returns(String) }
     def inspect
       "#<#{self.class.name}>"
@@ -141,7 +145,7 @@ class Version
 
   # A token string.
   class StringToken < Token
-    PATTERN = /[a-z]+/i.freeze
+    PATTERN = /[a-z]+/i
 
     sig { override.returns(String) }
     attr_reader :value
@@ -166,7 +170,7 @@ class Version
 
   # A token consisting of only numbers.
   class NumericToken < Token
-    PATTERN = /[0-9]+/i.freeze
+    PATTERN = /[0-9]+/i
 
     sig { override.returns(Integer) }
     attr_reader :value
@@ -206,7 +210,7 @@ class Version
 
   # A token representing the part of a version designating it as an alpha release.
   class AlphaToken < CompositeToken
-    PATTERN = /alpha[0-9]*|a[0-9]+/i.freeze
+    PATTERN = /alpha[0-9]*|a[0-9]+/i
 
     sig { override.params(other: T.untyped).returns(T.nilable(Integer)) }
     def <=>(other)
@@ -225,7 +229,7 @@ class Version
 
   # A token representing the part of a version designating it as a beta release.
   class BetaToken < CompositeToken
-    PATTERN = /beta[0-9]*|b[0-9]+/i.freeze
+    PATTERN = /beta[0-9]*|b[0-9]+/i
 
     sig { override.params(other: T.untyped).returns(T.nilable(Integer)) }
     def <=>(other)
@@ -246,7 +250,7 @@ class Version
 
   # A token representing the part of a version designating it as a pre-release.
   class PreToken < CompositeToken
-    PATTERN = /pre[0-9]*/i.freeze
+    PATTERN = /pre[0-9]*/i
 
     sig { override.params(other: T.untyped).returns(T.nilable(Integer)) }
     def <=>(other)
@@ -267,7 +271,7 @@ class Version
 
   # A token representing the part of a version designating it as a release candidate.
   class RCToken < CompositeToken
-    PATTERN = /rc[0-9]*/i.freeze
+    PATTERN = /rc[0-9]*/i
 
     sig { override.params(other: T.untyped).returns(T.nilable(Integer)) }
     def <=>(other)
@@ -288,7 +292,7 @@ class Version
 
   # A token representing the part of a version designating it as a patch release.
   class PatchToken < CompositeToken
-    PATTERN = /p[0-9]*/i.freeze
+    PATTERN = /p[0-9]*/i
 
     sig { override.params(other: T.untyped).returns(T.nilable(Integer)) }
     def <=>(other)
@@ -307,7 +311,7 @@ class Version
 
   # A token representing the part of a version designating it as a post release.
   class PostToken < CompositeToken
-    PATTERN = /.post[0-9]+/i.freeze
+    PATTERN = /.post[0-9]+/i
 
     sig { override.params(other: T.untyped).returns(T.nilable(Integer)) }
     def <=>(other)
@@ -343,7 +347,7 @@ class Version
 
   sig { params(val: String).returns(Version) }
   def self.create(val)
-    odeprecated "Version.create", "Version.new"
+    odisabled "Version.create", "Version.new"
     new(val)
   end
 
@@ -355,7 +359,7 @@ class Version
 
     VERSION_PARSERS.each do |parser|
       version = parser.parse(spec)
-      return new(version, detected_from_url: detected_from_url) if version.present?
+      return new(version, detected_from_url:) if version.present?
     end
 
     NULL
@@ -378,8 +382,9 @@ class Version
 
   VERSION_PARSERS = [
     # date-based versioning
+    # e.g. 2023-09-28.tar.gz
     # e.g. ltopers-v2017-04-14.tar.gz
-    StemParser.new(/-v?(\d{4}-\d{2}-\d{2})/),
+    StemParser.new(/(?:^|[._-]?)v?(\d{4}-\d{2}-\d{2})/),
 
     # GitHub tarballs
     # e.g. https://github.com/foo/bar/tarball/v1.2.3
@@ -492,8 +497,6 @@ class Version
 
   sig { params(val: T.any(PkgVersion, String, Version), detected_from_url: T::Boolean).void }
   def initialize(val, detected_from_url: false)
-    raise TypeError, "Version value must be a string; got a #{val.class} (#{val})" unless val.respond_to?(:to_str)
-
     version = val.to_str
     raise ArgumentError, "Version must not be empty" if version.blank?
 
@@ -506,7 +509,7 @@ class Version
     @detected_from_url
   end
 
-  HEAD_VERSION_REGEX = /\AHEAD(?:-(?<commit>.*))?\Z/.freeze
+  HEAD_VERSION_REGEX = /\AHEAD(?:-(?<commit>.*))?\Z/
   private_constant :HEAD_VERSION_REGEX
 
   # Check if this is a HEAD version.

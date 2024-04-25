@@ -4,7 +4,7 @@
 # @private
 module CompilerConstants
   GNU_GCC_VERSIONS = %w[4.9 5 6 7 8 9 10 11 12 13].freeze
-  GNU_GCC_REGEXP = /^gcc-(4\.9|[5-9]|10|11|12|13)$/.freeze
+  GNU_GCC_REGEXP = /^gcc-(4\.9|[5-9]|10|11|12|13)$/
   COMPILER_SYMBOL_MAP = {
     "gcc"        => :gcc,
     "clang"      => :clang,
@@ -54,7 +54,7 @@ class CompilerFailure
       version = 9999
       exact_major_match = false
     end
-    new(type, version, exact_major_match: exact_major_match, &block)
+    new(type, version, exact_major_match:, &block)
   end
 
   def fails_with?(compiler)
@@ -173,7 +173,7 @@ class CompilerSelector
     when "gcc", GNU_GCC_REGEXP
       versions.gcc_version(name.to_s)
     else
-      versions.send("#{name}_build_version")
+      versions.send(:"#{name}_build_version")
     end
   end
 end

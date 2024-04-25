@@ -88,16 +88,6 @@ If available, bottled binaries will be used by default except under the followin
 
 We aim to bottle everything.
 
-## How do I get a formula from someone else’s pull request?
-
-```sh
-brew install hub
-brew update
-cd "$(brew --repository homebrew/core)"
-hub fetch github_username
-hub pr checkout pull_request_number
-```
-
 ## Why should I install Homebrew in the default location?
 
 Homebrew's pre-built binary packages (known as [bottles](Bottles.md)) of many formulae can only be used if you install in the default installation prefix, otherwise they have to be built from source. Building from source takes a long time, is prone to failure, and is not supported. The default prefix is:
@@ -158,6 +148,18 @@ Yes! It’s easy! If you already have a local copy of `homebrew/core` (see above
 
 If you want your new formula to be part of `homebrew/core` or want to learn more about writing formulae, then please read the [Formula Cookbook](Formula-Cookbook.md).
 
+## How do I get a formula from someone else’s pull request?
+
+Ensure you have a [local copy of `homebrew/core`](#can-i-edit-formulae-myself), then:
+
+```sh
+brew update
+brew install hub
+cd "$(brew --repository homebrew/core)"
+hub fetch github_username
+hub pr checkout pull_request_number
+```
+
 ## Why was a formula deleted or disabled?
 
 Use `brew log <formula>` to find out! Likely because it had [unresolved issues](Acceptable-Formulae.md) and/or [our analytics](https://formulae.brew.sh/analytics/) indicated it was not widely used.
@@ -182,7 +184,7 @@ You can [modify a tool's build configuration](How-to-Build-Software-Outside-Home
 
 Chances are that certain apps will give you a popup message like this:
 
-<img src="https://i.imgur.com/CnEEATG.png" width="532" alt="Gatekeeper message">
+<img src="assets/img/docs/gatekeeper-unidentified-message.png" width="532" alt="Gatekeeper unidentified developer message">
 
 This is a [security feature from Apple](https://support.apple.com/en-us/HT202491). The single most important thing to know is that **you can allow individual apps to be exempt from this feature.** This allows the app to run while the rest of the system remains under protection.
 
@@ -190,13 +192,13 @@ This is a [security feature from Apple](https://support.apple.com/en-us/HT202491
 
 If you're sure you want to trust the app, you can disable protection for it by right-clicking its icon and choosing *Open*:
 
-<img src="https://i.imgur.com/69xc2WK.png" width="312" alt="Right-click the app and choose Open">
+<img src="assets/img/docs/right-click-choose-open.png" width="312" style="margin-left:60px" alt="Right-click the app and choose Open">
 
 In the resulting dialog, click the *Open* button to have macOS permanently allow the app to run on this Mac. **Don’t do this unless you’re sure you trust the app.**
 
-<img src="https://i.imgur.com/xppa4Qv.png" width="532" alt="Gatekeeper message">
+<img src="assets/img/docs/gatekeeper-unidentified-open.png" width="532" alt="Gatekeeper unidentified developer open prompt">
 
-Alternatively, you may provide the [`--no-quarantine` flag](https://github.com/Homebrew/homebrew-cask/blob/HEAD/USAGE.md#options) at install time to not add this feature to a specific app.
+Alternatively, you may provide the [`--no-quarantine` switch](https://github.com/Homebrew/homebrew-cask/blob/HEAD/USAGE.md#options) at install time to not add this feature to a specific app.
 
 ## Why aren’t some apps included during `brew upgrade`?
 
@@ -204,7 +206,7 @@ After running `brew upgrade`, you may notice some casks you think should be upgr
 
 As you’re likely aware, a lot of macOS software can upgrade itself:
 
-<img src="https://upload.wikimedia.org/wikipedia/commons/c/c0/Sparkle_Test_App_Software_Update.png" width="532" alt="Sparkle update window">
+<img src="assets/img/docs/sparkle-test-app-software-update.png" width="600" alt="Sparkle update window">
 
 That could cause conflicts when used in tandem with Homebrew Cask’s `upgrade` mechanism.
 
@@ -215,7 +217,7 @@ There are a few ideas to fix this problem:
 * Try to prevent the software’s automated updates. It wouldn’t be a universal solution and may cause it to break. Most software on Homebrew Cask is closed-source, so we’d be guessing. This is also why pinning casks to a version isn’t available.
 * Try to extract the installed software’s version and compare it to the cask, deciding what to do at that time. It’d be a complicated solution that would break other parts of our methodology, such as using versions to interpolate `url` values (a definite win for maintainability). This solution also isn’t universal, as many software developers are inconsistent in their versioning schemes (and app bundles are meant to have two version strings) and it doesn’t work for all types of software we support.
 
-So we let software be. Anything installed with Homebrew Cask should behave the same as if it were installed manually. But since we also want to support software that doesn’t self-upgrade, we add [`auto_updates true`](https://github.com/Homebrew/homebrew-cask/blob/62c0495b254845a481dacac6ea7c8005e27a3fb0/Casks/alfred.rb#L10) to casks for software that does, which excludes them from `brew upgrade`.
+So we let software be. Anything installed with Homebrew Cask should behave the same as if it were installed manually. But since we also want to support software that doesn’t self-upgrade, we add [`auto_updates true`](https://github.com/Homebrew/homebrew-cask/blob/aa461148bbb5119af26b82cccf5003e2b4e50d95/Casks/a/alfred.rb#L18) to casks for software that does, which excludes them from `brew upgrade`.
 
 Casks which use [`version :latest`](https://docs.brew.sh/Cask-Cookbook#version-latest) are also excluded, because we have no way to track their installed version. It helps to ask the developers of such software to provide versioned releases (i.e. include the version in the path of the download `url`).
 
@@ -223,7 +225,7 @@ If you still want to force software to be upgraded via Homebrew Cask, you can re
 
     brew upgrade <cask>
 
-Or use the `--greedy` flag:
+Or use the `--greedy` switch:
 
     brew upgrade --greedy
 

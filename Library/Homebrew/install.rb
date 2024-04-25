@@ -78,7 +78,7 @@ module Homebrew
 
         installed_head_version = formula.latest_head_version
         if installed_head_version &&
-           !formula.head_version_outdated?(installed_head_version, fetch_head: fetch_head)
+           !formula.head_version_outdated?(installed_head_version, fetch_head:)
           new_head_installed = true
         end
         prefix_installed = formula.prefix.exist? && !formula.prefix.children.empty?
@@ -87,7 +87,7 @@ module Homebrew
           # keg-only install is only possible when no other version is
           # linked to opt, because installing without any warnings can break
           # dependencies. Therefore before performing other checks we need to be
-          # sure --force flag is passed.
+          # sure the --force switch is passed.
           if formula.outdated?
             if !Homebrew::EnvConfig.no_install_upgrade? && !formula.pinned?
               name = formula.name
@@ -113,7 +113,7 @@ module Homebrew
             EOS
           end
         elsif (head && new_head_installed) || prefix_installed
-          # After we're sure that --force flag is passed for linked to opt
+          # After we're sure the --force switch was passed for linking to opt
           # keg-only we need to be sure that the version we're attempting to
           # install is not already installed.
 
@@ -244,31 +244,31 @@ module Homebrew
         dry_run: false,
         skip_post_install: false
       )
-        formula_installers = formulae_to_install.map do |formula|
-          Migrator.migrate_if_needed(formula, force: force, dry_run: dry_run)
+        formula_installers = formulae_to_install.filter_map do |formula|
+          Migrator.migrate_if_needed(formula, force:, dry_run:)
           build_options = formula.build
 
           formula_installer = FormulaInstaller.new(
             formula,
             options:                    build_options.used_options,
-            build_bottle:               build_bottle,
-            force_bottle:               force_bottle,
-            bottle_arch:                bottle_arch,
-            ignore_deps:                ignore_deps,
-            only_deps:                  only_deps,
-            include_test_formulae:      include_test_formulae,
-            build_from_source_formulae: build_from_source_formulae,
-            cc:                         cc,
-            git:                        git,
-            interactive:                interactive,
-            keep_tmp:                   keep_tmp,
-            debug_symbols:              debug_symbols,
-            force:                      force,
-            overwrite:                  overwrite,
-            debug:                      debug,
-            quiet:                      quiet,
-            verbose:                    verbose,
-            skip_post_install:          skip_post_install,
+            build_bottle:,
+            force_bottle:,
+            bottle_arch:,
+            ignore_deps:,
+            only_deps:,
+            include_test_formulae:,
+            build_from_source_formulae:,
+            cc:,
+            git:,
+            interactive:,
+            keep_tmp:,
+            debug_symbols:,
+            force:,
+            overwrite:,
+            debug:,
+            quiet:,
+            verbose:,
+            skip_post_install:,
           )
 
           begin
@@ -284,7 +284,7 @@ module Homebrew
             ofail "#{formula}: #{e}"
             nil
           end
-        end.compact
+        end
 
         if dry_run
           if (formulae_name_to_install = formulae_to_install.map(&:name))
@@ -305,12 +305,12 @@ module Homebrew
         end
       end
 
-      def print_dry_run_dependencies(formula, dependencies, &block)
+      def print_dry_run_dependencies(formula, dependencies)
         return if dependencies.empty?
 
         ohai "Would install #{Utils.pluralize("dependenc", dependencies.count, plural: "ies", singular: "y",
                                             include_count: true)} for #{formula.name}:"
-        formula_names = dependencies.map(&:first).map(&:to_formula).map(&block)
+        formula_names = dependencies.map { |(dep, _options)| yield dep.to_formula }
         puts formula_names.join(" ")
       end
 
@@ -355,7 +355,7 @@ module Homebrew
 
         upgrade = formula.linked? && formula.outdated? && !formula.head? && !Homebrew::EnvConfig.no_install_upgrade?
 
-        Upgrade.install_formula(formula_installer, upgrade: upgrade)
+        Upgrade.install_formula(formula_installer, upgrade:)
       end
     end
   end

@@ -58,6 +58,9 @@ module Homebrew
       # `curl` arguments used in `Strategy#page_content` method.
       PAGE_CONTENT_CURL_ARGS = ([
         "--compressed",
+        # Return an error when the HTTP response code is 400 or greater but
+        # continue to return body content
+        "--fail-with-body",
         # Include HTTP response headers in output, so we can identify the
         # final URL after any redirections
         "--include",
@@ -81,7 +84,7 @@ module Homebrew
         (?:ar(?:\.(?:bz2|gz|lz|lzma|lzo|xz|Z|zst))?|
         b2|bz2?|z2|az|gz|lz|lzma|xz|Z|aZ|zst)
         $
-      /ix.freeze
+      /ix
 
       # An error message to use when a `strategy` block returns a value of
       # an inappropriate type.
@@ -189,7 +192,7 @@ module Homebrew
               url,
               wanted_headers:    ["location", "content-disposition"],
               use_homebrew_curl: homebrew_curl,
-              user_agent:        user_agent,
+              user_agent:,
               **DEFAULT_CURL_OPTIONS,
             )
           rescue ErrorDuringExecution
@@ -219,7 +222,7 @@ module Homebrew
             *PAGE_CONTENT_CURL_ARGS, url,
             **DEFAULT_CURL_OPTIONS,
             use_homebrew_curl: homebrew_curl,
-            user_agent:        user_agent
+            user_agent:
           )
           next unless status.success?
 
@@ -266,6 +269,7 @@ end
 require_relative "strategy/apache"
 require_relative "strategy/bitbucket"
 require_relative "strategy/cpan"
+require_relative "strategy/crate"
 require_relative "strategy/electron_builder"
 require_relative "strategy/extract_plist"
 require_relative "strategy/git"

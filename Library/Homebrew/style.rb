@@ -3,12 +3,15 @@
 
 require "shellwords"
 require "source_location"
+require "system_command"
 
 module Homebrew
   # Helper module for running RuboCop.
   #
   # @api private
   module Style
+    extend SystemCommand::Mixin
+
     # Checks style for a list of files, printing simple RuboCop output.
     # Returns true if violations were found, false otherwise.
     def self.check_style_and_print(files, **options)
@@ -20,7 +23,7 @@ module Homebrew
             line = o.location.line
             column = o.location.line
 
-            annotation = GitHub::Actions::Annotation.new(:error, o.message, file: path, line: line, column: column)
+            annotation = GitHub::Actions::Annotation.new(:error, o.message, file: path, line:, column:)
             puts annotation if annotation.relevant?
           end
         end
@@ -51,23 +54,23 @@ module Homebrew
         (output_type == :json) ? [] : true
       else
         run_rubocop(ruby_files, output_type,
-                    fix: fix,
-                    except_cops: except_cops, only_cops: only_cops,
-                    display_cop_names: display_cop_names,
-                    reset_cache: reset_cache,
-                    debug: debug, verbose: verbose)
+                    fix:,
+                    except_cops:, only_cops:,
+                    display_cop_names:,
+                    reset_cache:,
+                    debug:, verbose:)
       end
 
       shellcheck_result = if ruby_files.any? && shell_files.none?
         (output_type == :json) ? [] : true
       else
-        run_shellcheck(shell_files, output_type, fix: fix)
+        run_shellcheck(shell_files, output_type, fix:)
       end
 
       shfmt_result = if ruby_files.any? && shell_files.none?
         true
       else
-        run_shfmt(shell_files, fix: fix)
+        run_shfmt(shell_files, fix:)
       end
 
       if output_type == :json
@@ -82,7 +85,7 @@ module Homebrew
     def self.run_rubocop(files, output_type,
                          fix: false, except_cops: nil, only_cops: nil, display_cop_names: false, reset_cache: false,
                          debug: false, verbose: false)
-      Homebrew.install_bundler_gems!
+      Homebrew.install_bundler_gems!(groups: ["style"])
 
       require "warnings"
 
@@ -126,6 +129,8 @@ module Homebrew
       files&.map!(&:expand_path)
       if files.blank? || files == [HOMEBREW_REPOSITORY]
         files = [HOMEBREW_LIBRARY_PATH]
+      elsif files.any? { |f| f.to_s.start_with? HOMEBREW_REPOSITORY/"docs" }
+        args << "--config" << (HOMEBREW_REPOSITORY/"docs/.rubocop.yml")
       elsif files.none? { |f| f.to_s.start_with? HOMEBREW_LIBRARY_PATH }
         args << "--config" << (HOMEBREW_LIBRARY/".rubocop.yml")
       end

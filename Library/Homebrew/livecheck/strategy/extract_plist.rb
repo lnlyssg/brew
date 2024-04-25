@@ -24,7 +24,7 @@ module Homebrew
         PRIORITY = 0
 
         # The `Regexp` used to determine if the strategy applies to the URL.
-        URL_MATCH_REGEX = %r{^https?://}i.freeze
+        URL_MATCH_REGEX = %r{^https?://}i
 
         # Whether the strategy can be applied to the provided URL.
         #
@@ -69,9 +69,9 @@ module Homebrew
             return Strategy.handle_block_return(block_return_value)
           end
 
-          items.map do |_key, item|
+          items.filter_map do |_key, item|
             item.bundle_version.nice_version
-          end.compact.uniq
+          end.uniq
         end
 
         # Uses {UnversionedCaskChecker} on the provided cask to identify
@@ -87,7 +87,7 @@ module Homebrew
             cask:    Cask::Cask,
             url:     T.nilable(String),
             regex:   T.nilable(Regexp),
-            _unused: T.nilable(T::Hash[Symbol, T.untyped]),
+            _unused: T.untyped,
             block:   T.nilable(Proc),
           ).returns(T::Hash[Symbol, T.untyped])
         }
@@ -100,7 +100,7 @@ module Homebrew
             raise ArgumentError, "The #{Utils.demodulize(T.must(name))} strategy only supports casks."
           end
 
-          match_data = { matches: {}, regex: regex, url: url }
+          match_data = { matches: {}, regex:, url: }
 
           unversioned_cask_checker = if url.present? && url != cask.url.to_s
             # Create a copy of the `cask` that uses the `livecheck` block URL

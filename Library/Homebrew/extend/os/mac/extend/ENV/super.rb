@@ -99,8 +99,8 @@ module Superenv
       MacOS::CLT::PKG_PATH
     end
 
-    generic_setup_build_environment(formula: formula, cc: cc, build_bottle: build_bottle, bottle_arch: bottle_arch,
-                                    testing_formula: testing_formula, debug_symbols: debug_symbols)
+    generic_setup_build_environment(formula:, cc:, build_bottle:, bottle_arch:,
+                                    testing_formula:, debug_symbols:)
 
     # Filter out symbols known not to be defined since GNU Autotools can't
     # reliably figure this out with Xcode 8 and above.
@@ -120,6 +120,12 @@ module Superenv
       ENV["ac_have_clock_syscall"] = "no"
     end
 
+    # On macOS Sonoma (at least release candidate), iconv() is generally
+    # present and working, but has a minor regression that defeats the
+    # test implemented in gettext's configure script (and used by many
+    # gettext dependents).
+    ENV["am_cv_func_iconv_works"] = "yes" if MacOS.version == "14"
+
     # The tools in /usr/bin proxy to the active developer directory.
     # This means we can use them for any combination of CLT and Xcode.
     self["HOMEBREW_PREFER_CLT_PROXIES"] = "1"
@@ -134,6 +140,9 @@ module Superenv
     # See: https://github.com/python/cpython/issues/97524
     #      https://github.com/pybind/pybind11/pull/4301
     no_fixup_chains
+
+    # Strip build prefixes from linker where supported, for deterministic builds.
+    append_to_cccfg "o" if DevelopmentTools.ld64_version >= 512
   end
 
   def no_weak_imports

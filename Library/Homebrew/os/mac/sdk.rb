@@ -1,6 +1,8 @@
 # typed: true
 # frozen_string_literal: true
 
+require "system_command"
+
 module OS
   module Mac
     # Class representing a macOS SDK.
@@ -8,7 +10,7 @@ module OS
     # @api private
     class SDK
       # 11.x SDKs are explicitly excluded - we want the MacOSX11.sdk symlink instead.
-      VERSIONED_SDK_REGEX = /MacOSX(10\.\d+|\d+)\.sdk$/.freeze
+      VERSIONED_SDK_REGEX = /MacOSX(10\.\d+|\d+)\.sdk$/
 
       sig { returns(MacOSVersion) }
       attr_reader :version
@@ -32,6 +34,7 @@ module OS
     # @api private
     class BaseSDKLocator
       extend T::Helpers
+      include SystemCommand::Mixin
 
       abstract!
 

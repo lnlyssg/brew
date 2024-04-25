@@ -54,6 +54,23 @@ module Cask
     end
   end
 
+  # Error when a cask cannot be installed.
+  #
+  # @api private
+  class CaskCannotBeInstalledError < AbstractCaskErrorWithToken
+    attr_reader :message
+
+    def initialize(token, message)
+      super(token)
+      @message = message
+    end
+
+    sig { returns(String) }
+    def to_s
+      "Cask '#{token}' has been #{message}"
+    end
+  end
+
   # Error when a cask conflicts with another cask.
   #
   # @api private
@@ -114,10 +131,24 @@ module Cask
   #
   # @api private
   class TapCaskAmbiguityError < CaskError
-    def initialize(ref, loaders)
+    sig { returns(String) }
+    attr_reader :token
+
+    sig { returns(T::Array[CaskLoader::FromNameLoader]) }
+    attr_reader :loaders
+
+    sig { params(token: String, loaders: T::Array[CaskLoader::FromNameLoader]).void }
+    def initialize(token, loaders)
+      @loaders = loaders
+
+      taps = loaders.map(&:tap)
+      casks = taps.map { |tap| "#{tap}/#{token}" }
+      cask_list = casks.sort.map { |f| "\n       * #{f}" }.join
+
       super <<~EOS
-        Cask #{ref} exists in multiple taps:
-        #{loaders.map { |loader| "  #{loader.tap}/#{loader.token}" }.join("\n")}
+        Cask #{token} exists in multiple taps:#{cask_list}
+
+        Please use the fully-qualified name (e.g. #{casks.first}) to refer to a specific Cask.
       EOS
     end
   end

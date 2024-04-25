@@ -56,7 +56,8 @@ class Resource < Downloadable
     return if !owner.respond_to?(:full_name) || owner.full_name != "ca-certificates"
     return if Homebrew::EnvConfig.no_insecure_redirect?
 
-    @insecure = !specs[:bottle] && !DevelopmentTools.ca_file_handles_most_https_certificates?
+    @insecure = !specs[:bottle] && (DevelopmentTools.ca_file_substitution_required? ||
+                                    DevelopmentTools.curl_substitution_required?)
     return if @url.nil?
 
     specs = if @insecure
@@ -94,7 +95,7 @@ class Resource < Downloadable
     fetch_patches(skip_downloaded: true)
     fetch unless downloaded?
 
-    unpack(target, debug_symbols: debug_symbols, &block)
+    unpack(target, debug_symbols:, &block)
   end
 
   def prepare_patches
@@ -120,7 +121,7 @@ class Resource < Downloadable
   # A target or a block must be given, but not both.
   def unpack(target = nil, debug_symbols: false)
     current_working_directory = Pathname.pwd
-    stage_resource(download_name, debug_symbols: debug_symbols) do |staging|
+    stage_resource(download_name, debug_symbols:) do |staging|
       downloader.stage do
         @source_modified_time = downloader.source_modified_time
         apply_patches
@@ -144,7 +145,7 @@ class Resource < Downloadable
   def fetch(verify_download_integrity: true)
     fetch_patches
 
-    super(verify_download_integrity: verify_download_integrity)
+    super(verify_download_integrity:)
   end
 
   # @!attribute [w] livecheck
@@ -194,14 +195,11 @@ class Resource < Downloadable
   def version(val = nil)
     return super() if val.nil?
 
-    @version = case T.unsafe(val)
+    @version = case val
     when String
       val.blank? ? Version::NULL : Version.new(val)
     when Version
       val
-    else
-      # TODO: This can probably go if/when typechecking is enforced in taps.
-      raise TypeError, "version '#{val.inspect}' should be a string"
     end
   end
 

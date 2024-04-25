@@ -2,15 +2,15 @@
 
 require "formula"
 
-describe "patching" do
+RSpec.describe "patching", type: :system do
   let(:formula_subclass) do
     Class.new(Formula) do
       # These are defined within an anonymous class to avoid polluting the global namespace.
       # rubocop:disable RSpec/LeakyConstantDeclaration,Lint/ConstantDefinitionInBlock
-      TESTBALL_URL = "file://#{TEST_FIXTURE_DIR}/tarballs/testball-0.1.tbz"
-      TESTBALL_PATCHES_URL = "file://#{TEST_FIXTURE_DIR}/tarballs/testball-0.1-patches.tgz"
-      PATCH_URL_A = "file://#{TEST_FIXTURE_DIR}/patches/noop-a.diff"
-      PATCH_URL_B = "file://#{TEST_FIXTURE_DIR}/patches/noop-b.diff"
+      TESTBALL_URL = "file://#{TEST_FIXTURE_DIR}/tarballs/testball-0.1.tbz".freeze
+      TESTBALL_PATCHES_URL = "file://#{TEST_FIXTURE_DIR}/tarballs/testball-0.1-patches.tgz".freeze
+      PATCH_URL_A = "file://#{TEST_FIXTURE_DIR}/patches/noop-a.diff".freeze
+      PATCH_URL_B = "file://#{TEST_FIXTURE_DIR}/patches/noop-b.diff".freeze
       PATCH_A_CONTENTS = File.read("#{TEST_FIXTURE_DIR}/patches/noop-a.diff").freeze
       PATCH_B_CONTENTS = File.read("#{TEST_FIXTURE_DIR}/patches/noop-b.diff").freeze
       APPLY_A = "noop-a.diff"
@@ -25,7 +25,7 @@ describe "patching" do
 
   def formula(name = "formula_name", path: Formulary.core_path(name), spec: :stable, alias_path: nil, &block)
     formula_subclass.class_eval(&block)
-    formula_subclass.new(name, path, spec, alias_path: alias_path)
+    formula_subclass.new(name, path, spec, alias_path:)
   end
 
   matcher :be_patched do
@@ -229,15 +229,3 @@ describe "patching" do
     end.to raise_error(BuildError)
   end
 end
-
-__END__
-diff --git a/libexec/NOOP b/libexec/NOOP
-index bfdda4c..e08d8f4 100755
---- a/libexec/NOOP
-+++ b/libexec/NOOP
-@@ -1,2 +1,2 @@
- #!/bin/bash
--echo NOOP
-\ No newline at end of file
-+echo ABCD
-\ No newline at end of file

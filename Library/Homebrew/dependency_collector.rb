@@ -45,6 +45,8 @@ class DependencyCollector
 
   def add(spec)
     case dep = fetch(spec)
+    when Array
+      dep.compact.each { |dep| @deps << dep }
     when Dependency
       @deps << dep
     when Requirement
@@ -63,11 +65,14 @@ class DependencyCollector
   end
 
   def cache_key(spec)
-    if spec.is_a?(Resource) && spec.download_strategy <= CurlDownloadStrategy
-      File.extname(spec.url)
-    else
-      spec
+    if spec.is_a?(Resource)
+      if spec.download_strategy <= CurlDownloadStrategy
+        return "#{spec.download_strategy}#{File.extname(spec.url).split("?").first}"
+      end
+
+      return spec.download_strategy
     end
+    spec
   end
 
   def build(spec)
@@ -126,6 +131,10 @@ class DependencyCollector
   sig { void }
   def init_global_dep_tree_if_needed!; end
 
+  sig {
+    params(spec: T.any(String, Resource, Symbol, Requirement, Dependency, Class),
+           tags: T::Array[Symbol]).returns(T.any(Dependency, Requirement, Array, NilClass))
+  }
   def parse_spec(spec, tags)
     raise ArgumentError, "Implicit dependencies cannot be manually specified" if tags.include?(:implicit)
 
@@ -140,8 +149,6 @@ class DependencyCollector
       spec
     when Class
       parse_class_spec(spec, tags)
-    else
-      raise TypeError, "Unsupported type #{spec.class.name} for #{spec.inspect}"
     end
   end
 
@@ -175,8 +182,7 @@ class DependencyCollector
     strategy = spec.download_strategy
 
     if strategy <= HomebrewCurlDownloadStrategy
-      @deps << curl_dep_if_needed(tags)
-      parse_url_spec(spec.url, tags)
+      [curl_dep_if_needed(tags), parse_url_spec(spec.url, tags)]
     elsif strategy <= NoUnzipCurlDownloadStrategy
       # ensure NoUnzip never adds any dependencies
     elsif strategy <= CurlDownloadStrategy

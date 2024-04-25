@@ -1,6 +1,7 @@
 # typed: true
 # frozen_string_literal: true
 
+require "attrable"
 require "dependable"
 require "dependency"
 require "dependencies"
@@ -60,14 +61,21 @@ class Requirement
     s
   end
 
-  # Overriding {#satisfied?} is unsupported.
-  # Pass a block or boolean to the satisfy DSL method instead.
+  # Pass a block or boolean to the satisfy DSL method instead of overriding.
+  sig(:final) {
+    params(
+      env:          T.nilable(String),
+      cc:           T.nilable(String),
+      build_bottle: T::Boolean,
+      bottle_arch:  T.nilable(String),
+    ).returns(T::Boolean)
+  }
   def satisfied?(env: nil, cc: nil, build_bottle: false, bottle_arch: nil)
     satisfy = self.class.satisfy
     return true unless satisfy
 
     @satisfied_result =
-      satisfy.yielder(env: env, cc: cc, build_bottle: build_bottle, bottle_arch: bottle_arch) do |p|
+      satisfy.yielder(env:, cc:, build_bottle:, bottle_arch:) do |p|
         instance_eval(&p)
       end
     return false unless @satisfied_result
@@ -75,8 +83,8 @@ class Requirement
     true
   end
 
-  # Overriding {#fatal?} is unsupported.
-  # Pass a boolean to the fatal DSL method instead.
+  # Pass a boolean to the fatal DSL method instead of overriding.
+  sig(:final) { returns(T::Boolean) }
   def fatal?
     self.class.fatal || false
   end
@@ -91,10 +99,17 @@ class Requirement
     parent
   end
 
-  # Overriding {#modify_build_environment} is unsupported.
-  # Pass a block to the env DSL method instead.
+  # Pass a block to the env DSL method instead of overriding.
+  sig(:final) {
+    params(
+      env:          T.nilable(String),
+      cc:           T.nilable(String),
+      build_bottle: T::Boolean,
+      bottle_arch:  T.nilable(String),
+    ).void
+  }
   def modify_build_environment(env: nil, cc: nil, build_bottle: false, bottle_arch: nil)
-    satisfied?(env: env, cc: cc, build_bottle: build_bottle, bottle_arch: bottle_arch)
+    satisfied?(env:, cc:, build_bottle:, bottle_arch:)
     instance_eval(&env_proc) if env_proc
 
     # XXX If the satisfy block returns a Pathname, then make sure that it
@@ -163,6 +178,7 @@ class Requirement
 
   class << self
     include BuildEnvironment::DSL
+    extend Attrable
 
     attr_reader :env_proc, :build
 
@@ -203,7 +219,7 @@ class Requirement
       elsif @options[:build_env]
         require "extend/ENV"
         ENV.with_build_environment(
-          env: env, cc: cc, build_bottle: build_bottle, bottle_arch: bottle_arch,
+          env:, cc:, build_bottle:, bottle_arch:,
         ) do
           yield @proc
         end
@@ -239,7 +255,13 @@ class Requirement
         end
       end
 
-      cache[cache_key][cache_id dependent] = reqs.dup if cache_key.present?
+      if cache_key.present?
+        # Even though we setup the cache above
+        # 'dependent.recursive_dependencies.map(&:to_formula)'
+        # is invalidating the singleton cache
+        cache[cache_key] ||= {}
+        cache[cache_key][cache_id dependent] = reqs.dup
+      end
       reqs
     end
 

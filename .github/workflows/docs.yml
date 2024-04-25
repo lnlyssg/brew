@@ -30,9 +30,9 @@ jobs:
         run: vale .
 
       - name: Install Ruby
-        uses: ruby/setup-ruby@v1
+        uses: ruby/setup-ruby@70da3bbf44ac06db1b0547ce2acc9380a5270d1e # v1.175.0
         with:
-          ruby-version: "2.7"
+          ruby-version: "3.1"
           bundler-cache: true
           working-directory: ${{ steps.set-up-homebrew.outputs.repository-path }}/docs
 
@@ -40,9 +40,14 @@ jobs:
         working-directory: ${{ steps.set-up-homebrew.outputs.repository-path }}/docs
         run: bundle exec rake lint
 
-      - name: Build docs site
+      - name: Check code blocks conform to our Ruby style guide
         working-directory: ${{ steps.set-up-homebrew.outputs.repository-path }}/docs
-        run: bundle exec rake build
+        run: brew style .
+
+      - name: Build the site and check for broken links
+        working-directory: ${{ steps.set-up-homebrew.outputs.repository-path }}/docs
+        run: |
+          bundle exec rake test
 
   rubydoc:
     if: github.repository == 'Homebrew/brew'
@@ -59,15 +64,15 @@ jobs:
           test-bot: false
 
       - name: Checkout Homebrew/rubydoc.brew.sh
-        uses: actions/checkout@main
+        uses: actions/checkout@v4
         with:
           repository: Homebrew/rubydoc.brew.sh
           path: rubydoc
 
       - name: Install Ruby
-        uses: ruby/setup-ruby@v1
+        uses: ruby/setup-ruby@70da3bbf44ac06db1b0547ce2acc9380a5270d1e # v1.175.0
         with:
-          ruby-version: "2.7"
+          ruby-version: "3.1"
           bundler-cache: true
 
       - name: Process rubydoc comments

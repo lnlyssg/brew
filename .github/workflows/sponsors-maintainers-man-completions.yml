@@ -3,7 +3,7 @@ name: Update sponsors, maintainers, manpage and completions
 on:
   push:
     branches:
-      - "**"
+      - master
     paths:
       - .github/workflows/sponsors-maintainers-man-completions.yml
       - README.md
@@ -45,7 +45,7 @@ jobs:
           signing_key: ${{ secrets.BREWTESTBOT_GPG_SIGNING_SUBKEY }}
 
       - name: Cache Bundler RubyGems
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ${{ steps.set-up-homebrew.outputs.gems-path }}
           key: ${{ runner.os }}-rubygems-${{ steps.set-up-homebrew.outputs.gems-hash }}
@@ -132,7 +132,7 @@ jobs:
 
       - name: Open a pull request
         if: steps.update.outputs.pull_request == 'true'
-        run: hub pull-request --no-edit
+        run: gh pr create --fill
         env:
           GITHUB_TOKEN: ${{ secrets.HOMEBREW_GITHUB_PUBLIC_REPO_TOKEN }}
         working-directory: ${{ steps.set-up-homebrew.outputs.repository-path }}

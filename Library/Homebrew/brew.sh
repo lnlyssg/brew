@@ -38,7 +38,7 @@ then
   HOMEBREW_DEFAULT_LOGS="${HOME}/Library/Logs/Homebrew"
   HOMEBREW_DEFAULT_TEMP="/private/tmp"
 else
-  CACHE_HOME="${XDG_CACHE_HOME:-${HOME}/.cache}"
+  CACHE_HOME="${HOMEBREW_XDG_CACHE_HOME:-${HOME}/.cache}"
   HOMEBREW_DEFAULT_CACHE="${CACHE_HOME}/Homebrew"
   HOMEBREW_DEFAULT_LOGS="${CACHE_HOME}/Homebrew/Logs"
   HOMEBREW_DEFAULT_TEMP="/tmp"
@@ -216,7 +216,7 @@ numeric() {
 }
 
 check-run-command-as-root() {
-  [[ "$(id -u)" == 0 ]] || return
+  [[ "$(id -u)" == 0 || "$(id -ur)" == 0 ]] || return
 
   # Allow Azure Pipelines/GitHub Actions/Docker/Concourse/Kubernetes to do everything as root (as it's normal there)
   [[ -f /.dockerenv ]] && return
@@ -259,22 +259,6 @@ check-array-membership() {
     return 0
   else
     return 1
-  fi
-}
-
-# Let user know we're still updating Homebrew if brew update --auto-update
-# exceeds 3 seconds.
-auto-update-timer() {
-  sleep 3
-  # Outputting a command but don't want to run it, hence single quotes.
-  # shellcheck disable=SC2016
-  echo 'Running `brew update --auto-update`...' >&2
-  if [[ -z "${HOMEBREW_NO_ENV_HINTS}" && -z "${HOMEBREW_AUTO_UPDATE_SECS}" ]]
-  then
-    # shellcheck disable=SC2016
-    echo 'Adjust how often this is run with HOMEBREW_AUTO_UPDATE_SECS or disable with' >&2
-    # shellcheck disable=SC2016
-    echo 'HOMEBREW_NO_AUTO_UPDATE. Hide these hints with HOMEBREW_NO_ENV_HINTS (see `man brew`).' >&2
   fi
 }
 
@@ -339,19 +323,7 @@ auto-update() {
       return
     fi
 
-    if [[ -z "${HOMEBREW_VERBOSE}" ]]
-    then
-      auto-update-timer &
-      timer_pid=$!
-    fi
-
     brew update --auto-update
-
-    if [[ -n "${timer_pid}" ]]
-    then
-      kill "${timer_pid}" 2>/dev/null
-      wait "${timer_pid}" 2>/dev/null
-    fi
 
     unset HOMEBREW_AUTO_UPDATING
 
@@ -419,9 +391,13 @@ fi
 
 # Many Pathname operations use getwd when they shouldn't, and then throw
 # odd exceptions. Reduce our support burden by showing a user-friendly error.
-if [[ ! -d "$(pwd)" ]]
+if ! [[ -d "$(pwd)" ]]
 then
-  odie "The current working directory doesn't exist, cannot proceed."
+  odie "The current working directory must exist to run brew."
+fi
+if ! [[ -r "$(pwd)" ]]
+then
+  odie "The current working directory must be readable to ${USER} to run brew."
 fi
 
 #####
@@ -485,8 +461,8 @@ HOMEBREW_VERSION="$("${HOMEBREW_GIT}" -C "${HOMEBREW_REPOSITORY}" describe --tag
 HOMEBREW_USER_AGENT_VERSION="${HOMEBREW_VERSION}"
 if [[ -z "${HOMEBREW_VERSION}" ]]
 then
-  HOMEBREW_VERSION=">=2.5.0 (shallow or no git repository)"
-  HOMEBREW_USER_AGENT_VERSION="2.X.Y"
+  HOMEBREW_VERSION=">=4.1.0 (shallow or no git repository)"
+  HOMEBREW_USER_AGENT_VERSION="4.X.Y"
 fi
 
 HOMEBREW_CORE_REPOSITORY="${HOMEBREW_LIBRARY}/Taps/homebrew/homebrew-core"
@@ -502,15 +478,18 @@ case "$*" in
     ;;
 esac
 
-# TODO: bump version when new macOS is released or announced
-# and also update references in docs/Installation.md,
-# https://github.com/Homebrew/install/blob/HEAD/install.sh and
-# MacOSVersion::SYMBOLS
-HOMEBREW_MACOS_NEWEST_UNSUPPORTED="14"
-# TODO: bump version when new macOS is released and also update
-# references in docs/Installation.md and
-# https://github.com/Homebrew/install/blob/HEAD/install.sh
-HOMEBREW_MACOS_OLDEST_SUPPORTED="11"
+# TODO: bump version when new macOS is released or announced and update references in:
+# - docs/Installation.md
+# - https://github.com/Homebrew/install/blob/HEAD/install.sh
+# and, if needed:
+# - MacOSVersion::SYMBOLS
+HOMEBREW_MACOS_NEWEST_UNSUPPORTED="15"
+# TODO: bump version when new macOS is released and update references in:
+# - docs/Installation.md
+# - HOMEBREW_MACOS_OLDEST_SUPPORTED in .github/workflows/pkg-installer.yml
+# - `os-version min` in package/Distribution.xml
+# - https://github.com/Homebrew/install/blob/HEAD/install.sh
+HOMEBREW_MACOS_OLDEST_SUPPORTED="12"
 HOMEBREW_MACOS_OLDEST_ALLOWED="10.11"
 
 if [[ -n "${HOMEBREW_MACOS}" ]]
@@ -568,7 +547,14 @@ then
     HOMEBREW_FORCE_BREWED_CA_CERTIFICATES="1"
   fi
 
+  # TEMP: backwards compatiblity with existing 10.11-cross image
+  # Can (probably) be removed in March 2024.
   if [[ -n "${HOMEBREW_FAKE_EL_CAPITAN}" ]]
+  then
+    export HOMEBREW_FAKE_MACOS="10.11.6"
+  fi
+
+  if [[ "${HOMEBREW_FAKE_MACOS}" =~ ^10\.11(\.|$) ]]
   then
     # We only need this to work enough to update brew and build the set portable formulae, so relax the requirement.
     HOMEBREW_MINIMUM_GIT_VERSION="2.7.4"
@@ -580,21 +566,10 @@ then
       HOMEBREW_FORCE_BREWED_GIT="1"
     fi
   fi
-
-  # Set a variable when the macOS system Ruby is new enough to avoid spawning
-  # a Ruby process unnecessarily.
-  if [[ "${HOMEBREW_MACOS_VERSION_NUMERIC}" -lt "120601" ]]
-  then
-    unset HOMEBREW_MACOS_SYSTEM_RUBY_NEW_ENOUGH
-  else
-    # Used in ruby.sh.
-    # shellcheck disable=SC2034
-    HOMEBREW_MACOS_SYSTEM_RUBY_NEW_ENOUGH="1"
-  fi
 else
   HOMEBREW_PRODUCT="${HOMEBREW_SYSTEM}brew"
   # Don't try to follow /etc/os-release
-  # shellcheck disable=SC1091
+  # shellcheck disable=SC1091,SC2154
   [[ -n "${HOMEBREW_LINUX}" ]] && HOMEBREW_OS_VERSION="$(source /etc/os-release && echo "${PRETTY_NAME}")"
   : "${HOMEBREW_OS_VERSION:=$(uname -r)}"
   HOMEBREW_OS_USER_AGENT_VERSION="${HOMEBREW_OS_VERSION}"
@@ -654,7 +629,6 @@ Your Git executable: $(unset git && type -p "${HOMEBREW_GIT}")"
   fi
 
   HOMEBREW_LINUX_MINIMUM_GLIBC_VERSION="2.13"
-  unset HOMEBREW_MACOS_SYSTEM_RUBY_NEW_ENOUGH
 
   HOMEBREW_CORE_REPOSITORY_ORIGIN="$("${HOMEBREW_GIT}" -C "${HOMEBREW_CORE_REPOSITORY}" remote get-url origin 2>/dev/null)"
   if [[ "${HOMEBREW_CORE_REPOSITORY_ORIGIN}" =~ (/linuxbrew|Linuxbrew/homebrew)-core(\.git)?$ ]]
@@ -745,7 +719,6 @@ export HOMEBREW_USER_AGENT
 export HOMEBREW_USER_AGENT_CURL
 export HOMEBREW_API_DEFAULT_DOMAIN
 export HOMEBREW_BOTTLE_DEFAULT_DOMAIN
-export HOMEBREW_MACOS_SYSTEM_RUBY_NEW_ENOUGH
 export HOMEBREW_CURL_SPEED_LIMIT
 export HOMEBREW_CURL_SPEED_TIME
 
@@ -865,7 +838,8 @@ if check-array-membership "${HOMEBREW_COMMAND}" "${AUTO_UPDATE_CORE_TAP_COMMANDS
 then
   export HOMEBREW_AUTO_UPDATE_COMMAND="1"
   export HOMEBREW_AUTO_UPDATE_CORE_TAP="1"
-else
+elif [[ -z "${HOMEBREW_AUTO_UPDATING}" ]]
+then
   unset HOMEBREW_AUTO_UPDATE_CORE_TAP
 fi
 
@@ -879,8 +853,9 @@ if check-array-membership "${HOMEBREW_COMMAND}" "${AUTO_UPDATE_CASK_TAP_COMMANDS
 then
   export HOMEBREW_AUTO_UPDATE_COMMAND="1"
   export HOMEBREW_AUTO_UPDATE_CASK_TAP="1"
-else
-  unset HOMEBREW_AUTO_UPDATE_CORE_TAP
+elif [[ -z "${HOMEBREW_AUTO_UPDATING}" ]]
+then
+  unset HOMEBREW_AUTO_UPDATE_CASK_TAP
 fi
 
 # Disable Ruby options we don't need.
@@ -912,27 +887,6 @@ then
   export HOMEBREW_DEVELOPER_COMMAND="1"
 fi
 
-if [[ -n "${HOMEBREW_DEVELOPER}" || -n "${HOMEBREW_DEVELOPER_COMMAND}" ]]
-then
-  # Always run with Sorbet for Homebrew developers or Homebrew developer commands.
-  export HOMEBREW_SORBET_RUNTIME="1"
-fi
-
-# NO_SORBET_RUNTIME_COMMANDS are currently failing with Sorbet for homebrew/core.
-# TODO: fix this and remove this if block.
-if [[ -n "${HOMEBREW_SORBET_RUNTIME}" ]]
-then
-  NO_SORBET_RUNTIME_COMMANDS=(
-  )
-
-  if check-array-membership "${HOMEBREW_COMMAND}" "${NO_SORBET_RUNTIME_COMMANDS[@]}"
-  then
-    unset HOMEBREW_SORBET_RUNTIME
-  fi
-
-  unset NO_SORBET_RUNTIME_COMMANDS
-fi
-
 # Provide a (temporary, undocumented) way to disable Sorbet globally if needed
 # to avoid reverting the above.
 if [[ -n "${HOMEBREW_NO_SORBET_RUNTIME}" ]]
@@ -955,6 +909,12 @@ EOS
 
   git config --file="${HOMEBREW_GIT_CONFIG_FILE}" --replace-all homebrew.devcmdrun true 2>/dev/null
   export HOMEBREW_DEV_CMD_RUN="1"
+fi
+
+if [[ -n "${HOMEBREW_DEVELOPER}" || -n "${HOMEBREW_DEV_CMD_RUN}" ]]
+then
+  # Always run with Sorbet for Homebrew developers or when a Homebrew developer command has been run.
+  export HOMEBREW_SORBET_RUNTIME="1"
 fi
 
 if [[ -f "${HOMEBREW_LIBRARY}/Homebrew/cmd/${HOMEBREW_COMMAND}.sh" ]]

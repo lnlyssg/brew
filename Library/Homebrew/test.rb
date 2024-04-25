@@ -8,7 +8,6 @@ old_trap = trap("INT") { exit! 130 }
 require_relative "global"
 require "extend/ENV"
 require "timeout"
-require "debrew"
 require "formula_assertions"
 require "formula_free_port"
 require "fcntl"
@@ -19,7 +18,7 @@ require "dev-cmd/test"
 TEST_TIMEOUT_SECONDS = 5 * 60
 
 begin
-  args = Homebrew.test_args.parse
+  args = Homebrew::DevCmd::Test.new.args
   Context.current = args.context
 
   error_pipe = UNIXSocket.open(ENV.fetch("HOMEBREW_ERROR_PIPE"), &:recv_io)
@@ -35,10 +34,13 @@ begin
   formula = T.must(args.named.to_resolved_formulae.first)
   formula.extend(Homebrew::Assertions)
   formula.extend(Homebrew::FreePort)
-  formula.extend(Debrew::Formula) if args.debug?
+  if args.debug?
+    require "debrew"
+    formula.extend(Debrew::Formula)
+  end
 
   ENV.extend(Stdenv)
-  ENV.setup_build_environment(formula: formula, testing_formula: true)
+  ENV.setup_build_environment(formula:, testing_formula: true)
 
   # tests can also return false to indicate failure
   run_test = proc { |_ = nil| raise "test returned false" if formula.run_test(keep_tmp: args.keep_tmp?) == false }

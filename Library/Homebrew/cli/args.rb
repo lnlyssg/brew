@@ -40,8 +40,8 @@ module Homebrew
         self[:named] = NamedArgs.new(
           *named_args.freeze,
           parent:       self,
-          cask_options: cask_options,
-          without_api:  without_api,
+          cask_options:,
+          without_api:,
           **options,
         )
       end
@@ -97,8 +97,11 @@ module Homebrew
       end
 
       def only_formula_or_cask
-        return :formula if formula? && !cask?
-        return :cask if cask? && !formula?
+        if formula? && !cask?
+          :formula
+        elsif cask? && !formula?
+          :cask
+        end
       end
 
       sig { returns(T::Array[[Symbol, Symbol]]) }
@@ -111,10 +114,7 @@ module Homebrew
         when :all
           skip_invalid_combinations = true
 
-          [
-            *MacOSVersion::SYMBOLS.keys,
-            :linux,
-          ]
+          OnSystem::ALL_OS_OPTIONS
         else
           [os_sym]
         end
@@ -131,7 +131,7 @@ module Homebrew
 
         oses.product(arches).select do |os, arch|
           if skip_invalid_combinations
-            bottle_tag = Utils::Bottles::Tag.new(system: os, arch: arch)
+            bottle_tag = Utils::Bottles::Tag.new(system: os, arch:)
             bottle_tag.valid_combination?
           else
             true
@@ -152,7 +152,7 @@ module Homebrew
         @cli_args = []
         @processed_options.each do |short, long|
           option = long || short
-          switch = "#{option_to_name(option)}?".to_sym
+          switch = :"#{option_to_name(option)}?"
           flag = option_to_name(option).to_sym
           if @table[switch] == true || @table[flag] == true
             @cli_args << option

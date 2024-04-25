@@ -16,7 +16,8 @@ module Repology
     last_package_in_response += "/" if last_package_in_response.present?
     url = "https://repology.org/api/v1/projects/#{last_package_in_response}?inrepo=#{repository}&outdated=1"
 
-    output, errors, = curl_output(url.to_s, "--silent", use_homebrew_curl: !curl_supports_tls13?)
+    output, errors, = Utils::Curl.curl_output(url.to_s, "--silent",
+                                              use_homebrew_curl: !Utils::Curl.curl_supports_tls13?)
     JSON.parse(output)
   rescue
     if Homebrew::EnvConfig.developer?
@@ -31,12 +32,13 @@ module Repology
   def self.single_package_query(name, repository:)
     url = "https://repology.org/api/v1/project/#{name}"
 
-    output, errors, = curl_output("--location", "--silent", url.to_s, use_homebrew_curl: !curl_supports_tls13?)
+    output, errors, = Utils::Curl.curl_output("--location", "--silent", url.to_s,
+                                              use_homebrew_curl: !Utils::Curl.curl_supports_tls13?)
 
     data = JSON.parse(output)
     { name => data }
   rescue => e
-    error_output = [errors, "#{e.class}: #{e}", e.backtrace].compact
+    error_output = [errors, "#{e.class}: #{e}", Utils::Backtrace.clean(e)].compact
     if Homebrew::EnvConfig.developer?
       $stderr.puts(*error_output)
     else
@@ -64,7 +66,7 @@ module Repology
     while page_no <= MAX_PAGINATION
       odebug "Paginating Repology API page: #{page_no}"
 
-      response = query_api(last_package, repository: repository)
+      response = query_api(last_package, repository:)
       outdated_packages.merge!(response)
       last_package = response.keys.max
 

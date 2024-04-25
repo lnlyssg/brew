@@ -9,7 +9,7 @@ then
 fi
 
 __brewcomp_words_include() {
-  local element idx 
+  local element idx
   for (( idx = 1; idx < COMP_CWORD; idx++ ))
   do
     element=${COMP_WORDS[idx]}
@@ -68,14 +68,14 @@ __brew_complete_installed_casks() {
 __brew_complete_outdated_formulae() {
   local cur="${COMP_WORDS[COMP_CWORD]}"
   local outdated_formulae
-  outdated_formulae="$(brew outdated --formula --quiet)"
+  outdated_formulae="$(HOMEBREW_NO_AUTO_UPDATE=1 brew outdated --formula --quiet)"
   while read -r line; do COMPREPLY+=("${line}"); done < <(compgen -W "${outdated_formulae}" -- "${cur}")
 }
 
 __brew_complete_outdated_casks() {
   local cur="${COMP_WORDS[COMP_CWORD]}"
   local outdated_casks
-  outdated_casks="$(brew outdated --cask --quiet)"
+  outdated_casks="$(HOMEBREW_NO_AUTO_UPDATE=1 brew outdated --cask --quiet 2>/dev/null)"
   while read -r line; do COMPREPLY+=("${line}"); done < <(compgen -W "${outdated_casks}" -- "${cur}")
 }
 
@@ -443,10 +443,12 @@ _brew_bump() {
       --help
       --installed
       --limit
+      --no-fork
       --no-pull-requests
       --open-pr
       --quiet
       --start-with
+      --tap
       --verbose
       "
       return
@@ -465,7 +467,6 @@ _brew_bump_cask_pr() {
       --commit
       --debug
       --dry-run
-      --force
       --fork-org
       --help
       --message
@@ -473,7 +474,6 @@ _brew_bump_cask_pr() {
       --no-browse
       --no-fork
       --no-style
-      --online
       --quiet
       --sha256
       --url
@@ -501,6 +501,7 @@ _brew_bump_formula_pr() {
       --force
       --fork-org
       --help
+      --install-dependencies
       --message
       --mirror
       --no-audit
@@ -738,7 +739,9 @@ _brew_deps() {
   case "${cur}" in
     -*)
       __brewcomp "
+      --HEAD
       --annotate
+      --arch
       --cask
       --debug
       --direct
@@ -755,6 +758,7 @@ _brew_deps() {
       --include-test
       --installed
       --missing
+      --os
       --quiet
       --skip-recommended
       --topological
@@ -799,6 +803,7 @@ _brew_determine_test_runners() {
   case "${cur}" in
     -*)
       __brewcomp "
+      --all-supported
       --debug
       --dependents
       --eval-all
@@ -1288,6 +1293,7 @@ _brew_install_bundler_gems() {
   case "${cur}" in
     -*)
       __brewcomp "
+      --add-groups
       --debug
       --groups
       --help
@@ -1326,6 +1332,7 @@ _brew_lc() {
       --cask
       --debug
       --eval-all
+      --extract-plist
       --formula
       --full-name
       --help
@@ -1415,6 +1422,8 @@ _brew_list() {
       --formula
       --full-name
       --help
+      --installed-as-dependency
+      --installed-on-request
       --multiple
       --pinned
       --quiet
@@ -1441,6 +1450,7 @@ _brew_livecheck() {
       --cask
       --debug
       --eval-all
+      --extract-plist
       --formula
       --full-name
       --help
@@ -1516,6 +1526,8 @@ _brew_ls() {
       --formula
       --full-name
       --help
+      --installed-as-dependency
+      --installed-on-request
       --multiple
       --pinned
       --quiet
@@ -1712,7 +1724,6 @@ _brew_pr_automerge() {
       --debug
       --help
       --ignore-failures
-      --no-autosquash
       --publish
       --quiet
       --tap
@@ -1739,7 +1750,6 @@ _brew_pr_publish() {
       --help
       --large-runner
       --message
-      --no-autosquash
       --quiet
       --tap
       --verbose
@@ -1756,7 +1766,7 @@ _brew_pr_pull() {
   case "${cur}" in
     -*)
       __brewcomp "
-      --artifact
+      --artifact-pattern
       --autosquash
       --branch-okay
       --clean
@@ -1767,12 +1777,12 @@ _brew_pr_pull() {
       --ignore-missing-artifacts
       --keep-old
       --message
-      --no-autosquash
       --no-cherry-pick
       --no-commit
       --no-upload
       --quiet
       --resolve
+      --retain-bottle-dir
       --root-url
       --root-url-using
       --tap
@@ -2103,9 +2113,7 @@ _brew_tap() {
       --debug
       --eval-all
       --force
-      --force-auto-update
       --help
-      --no-force-auto-update
       --quiet
       --repair
       --verbose
@@ -2206,7 +2214,6 @@ _brew_tests() {
   case "${cur}" in
     -*)
       __brewcomp "
-      --byebug
       --changed
       --coverage
       --debug
@@ -2215,6 +2222,7 @@ _brew_tests() {
       --help
       --online
       --only
+      --profile
       --quiet
       --seed
       --verbose
@@ -2257,6 +2265,7 @@ _brew_unbottled() {
       --dependents
       --eval-all
       --help
+      --lost
       --quiet
       --tag
       --total
@@ -2469,6 +2478,7 @@ _brew_update_python_resources() {
       --extra-packages
       --help
       --ignore-non-pypi-packages
+      --install-dependencies
       --package-name
       --print-only
       --quiet
@@ -2562,7 +2572,6 @@ _brew_upgrade() {
       --greedy-auto-updates
       --greedy-latest
       --help
-      --ignore-pinned
       --input-methoddir
       --interactive
       --internet-plugindir
@@ -2572,6 +2581,7 @@ _brew_upgrade() {
       --mdimporterdir
       --no-binaries
       --no-quarantine
+      --overwrite
       --prefpanedir
       --qlplugindir
       --quarantine
@@ -2588,8 +2598,8 @@ _brew_upgrade() {
       ;;
     *) ;;
   esac
-  __brew_complete_outdated_formulae
-  __brew_complete_outdated_casks
+  __brew_complete_installed_formulae
+  __brew_complete_installed_casks
 }
 
 _brew_uses() {

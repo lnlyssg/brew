@@ -17,10 +17,9 @@ module OS
       # This may be a beta version for a beta macOS.
       sig { params(macos: MacOSVersion).returns(String) }
       def self.latest_version(macos: MacOS.version)
-        latest_stable = "14.3"
+        latest_stable = "15.1"
         case macos
-        when "14" then "15.0"
-        when "13" then latest_stable
+        when "14", "13" then latest_stable
         when "12" then "14.2"
         when "11" then "13.2.1"
         when "10.15" then "12.4"
@@ -51,7 +50,7 @@ module OS
         when "10.14" then "10.2"
         when "10.13" then "9.0"
         when "10.12" then "8.0"
-        else "2.0"
+        else "7.3"
         end
       end
 
@@ -74,7 +73,7 @@ module OS
         # With fake El Capitan for Portable Ruby, we want the full 10.11 SDK so that we can link
         # against the correct set of libraries in the SDK sysroot rather than the system's copies.
         # We therefore do not use the CLT under this setup, which installs to /usr/include.
-        return false if ENV["HOMEBREW_FAKE_EL_CAPITAN"]
+        return false if ENV["HOMEBREW_FAKE_MACOS"]
 
         without_clt?
       end
@@ -95,21 +94,17 @@ module OS
       # directory or nil if Xcode.app is not installed.
       sig { returns(T.nilable(Pathname)) }
       def self.prefix
-        return @prefix if defined?(@prefix)
+        @prefix ||= begin
+          dir = MacOS.active_developer_dir
 
-        @prefix = T.let(@prefix, T.nilable(Pathname))
-        @prefix ||=
-          begin
-            dir = MacOS.active_developer_dir
-
-            if dir.empty? || dir == CLT::PKG_PATH || !File.directory?(dir)
-              path = bundle_path
-              path/"Contents/Developer" if path
-            else
-              # Use cleanpath to avoid pathological trailing slash
-              Pathname.new(dir).cleanpath
-            end
+          if dir.empty? || dir == CLT::PKG_PATH || !File.directory?(dir)
+            path = bundle_path
+            path/"Contents/Developer" if path
+          else
+            # Use cleanpath to avoid pathological trailing slash
+            Pathname.new(dir).cleanpath
           end
+        end
       end
 
       sig { returns(Pathname) }
@@ -130,6 +125,7 @@ module OS
 
       sig { returns(T::Boolean) }
       def self.installed?
+        odeprecated "`MacOS::Xcode.installed?` on Linux" if Homebrew::SimulateSystem.simulating_or_running_on_linux?
         !prefix.nil?
       end
 
@@ -176,8 +172,12 @@ module OS
         end
       end
 
+      # Get the Xcode version.
+      #
+      # @api internal
       sig { returns(::Version) }
       def self.version
+        odeprecated "`MacOS::Xcode.version` on Linux" if Homebrew::SimulateSystem.simulating_or_running_on_linux?
         # may return a version string
         # that is guessed based on the compiler, so do not
         # use it in order to check if Xcode is installed.
@@ -194,22 +194,32 @@ module OS
         # if return is used in the middle, which we do many times in here.
         return if !MacOS::Xcode.installed? && !MacOS::CLT.installed?
 
-        %W[
-          #{prefix}/usr/bin/xcodebuild
-          #{which("xcodebuild")}
-        ].uniq.each do |xcodebuild_path|
-          next unless File.executable? xcodebuild_path
+        if MacOS::Xcode.installed?
+          # Fast path that will probably almost always work unless `xcode-select -p` is misconfigured
+          version_plist = T.must(prefix).parent/"version.plist"
+          if version_plist.file?
+            data = Plist.parse_xml(version_plist, marshal: false)
+            version = data["CFBundleShortVersionString"] if data
+            return version if version
+          end
 
-          xcodebuild_output = Utils.popen_read(xcodebuild_path, "-version")
-          next unless $CHILD_STATUS.success?
+          %W[
+            #{prefix}/usr/bin/xcodebuild
+            #{which("xcodebuild")}
+          ].uniq.each do |xcodebuild_path|
+            next unless File.executable? xcodebuild_path
 
-          xcode_version = xcodebuild_output[/Xcode (\d+(\.\d+)*)/, 1]
-          return xcode_version if xcode_version
+            xcodebuild_output = Utils.popen_read(xcodebuild_path, "-version")
+            next unless $CHILD_STATUS.success?
 
-          # Xcode 2.x's xcodebuild has a different version string
-          case xcodebuild_output[/DevToolsCore-(\d+\.\d)/, 1]
-          when "798.0" then return "2.5"
-          when "515.0" then return "2.0"
+            xcode_version = xcodebuild_output[/Xcode (\d+(\.\d+)*)/, 1]
+            return xcode_version if xcode_version
+
+            # Xcode 2.x's xcodebuild has a different version string
+            case xcodebuild_output[/DevToolsCore-(\d+\.\d)/, 1]
+            when "798.0" then return "2.5"
+            when "515.0" then return "2.0"
+            end
           end
         end
 
@@ -245,7 +255,7 @@ module OS
         when "13.0.0" then "13.2.1"
         when "13.1.6" then "13.4.1"
         when "14.0.0" then "14.2"
-        when "15.0.0" then "15.0"
+        when "15.0.0" then "15.1"
         else               "14.3"
         end
       end
@@ -268,6 +278,7 @@ module OS
       # Returns true even if outdated tools are installed.
       sig { returns(T::Boolean) }
       def self.installed?
+        odeprecated "`MacOS::CLT.installed?` on Linux" if Homebrew::SimulateSystem.simulating_or_running_on_linux?
         !version.null?
       end
 
@@ -340,8 +351,7 @@ module OS
       sig { returns(String) }
       def self.latest_clang_version
         case MacOS.version
-        when "14"    then "1500.0.28.1.1"
-        when "13"    then "1403.0.22.14.1"
+        when "14", "13" then "1500.1.0.2.5"
         when "12"    then "1400.0.29.202"
         when "11"    then "1300.0.29.30"
         when "10.15" then "1200.0.32.29"
@@ -366,7 +376,7 @@ module OS
         when "10.14" then "10.0.0"
         when "10.13" then "9.0.0"
         when "10.12" then "8.0.0"
-        else              "1.0.0"
+        else              "7.3.0"
         end
       end
 
@@ -399,8 +409,11 @@ module OS
       # Version string (a pretty long one) of the CLT package.
       # Note that the different ways of installing the CLTs lead to different
       # version numbers.
+      #
+      # @api internal
       sig { returns(::Version) }
       def self.version
+        odeprecated "`MacOS::CLT.version` on Linux" if Homebrew::SimulateSystem.simulating_or_running_on_linux?
         if @version ||= detect_version
           ::Version.new @version
         else

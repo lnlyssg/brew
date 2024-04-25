@@ -20,7 +20,7 @@ module Cask
 
         raise CaskInvalidError.new(cask.token, "No source provided for #{english_name}.") if source.blank?
 
-        unless options.try(:key?, :target)
+        unless options&.key?(:target)
           raise CaskInvalidError.new(cask.token, "#{english_name} '#{source}' requires a target.")
         end
 
@@ -30,11 +30,6 @@ module Cask
       sig { params(target: T.any(String, Pathname)).returns(Pathname) }
       def resolve_target(target)
         super(target, base_dir: nil)
-      end
-
-      sig { params(cask: Cask, source: T.any(String, Pathname), target: T.any(String, Pathname)).void }
-      def initialize(cask, source, target:)
-        super(cask, source, target: target)
       end
     end
   end

@@ -33,11 +33,11 @@ module RuboCop
 
           # NOTE: Solving the first problem here might solve the second one too
           # so we don't show both of them at the same time.
-          if (method_calls.keys & REQUIRED_METHOD_CALLS).empty?
+          if !method_calls.keys.intersect?(REQUIRED_METHOD_CALLS)
             offending_node(service_node)
             problem "Service blocks require `run` or `name` to be defined."
           elsif !method_calls.key?(:run)
-            other_method_calls = method_calls.keys - [:name]
+            other_method_calls = method_calls.keys - [:name, :require_root]
             if other_method_calls.any?
               offending_node(service_node)
               problem "`run` must be defined to use methods other than `name` like #{other_method_calls}."

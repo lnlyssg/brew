@@ -2,6 +2,7 @@
 # frozen_string_literal: true
 
 require "cask/artifact/abstract_artifact"
+require "extend/hash/keys"
 
 module Cask
   module Artifact
@@ -13,7 +14,7 @@ module Cask
         source_string, target_hash = args
 
         if target_hash
-          raise CaskInvalidError unless target_hash.respond_to?(:keys)
+          raise CaskInvalidError, cask unless target_hash.respond_to?(:keys)
 
           target_hash.assert_valid_keys(:target)
         end

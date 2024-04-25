@@ -13,12 +13,24 @@ class Tab
 
   FILENAME = "INSTALL_RECEIPT.json"
 
-  attr_accessor :homebrew_version, :tabfile, :built_as_bottle, :installed_as_dependency, :installed_on_request,
-                :changed_files, :poured_from_bottle, :loaded_from_api, :time, :stdlib, :aliases, :arch, :source,
-                :built_on
-  attr_writer :used_options, :unused_options, :compiler, :runtime_dependencies, :source_modified_time
+  # @api internal
+  attr_accessor :installed_as_dependency
 
-  # Instantiates a Tab for a new installation of a formula.
+  # @api internal
+  attr_accessor :installed_on_request
+
+  # @api internal
+  attr_accessor :poured_from_bottle
+
+  attr_accessor :homebrew_version, :tabfile, :built_as_bottle,
+                :changed_files, :loaded_from_api, :time, :stdlib, :aliases, :arch, :source,
+                :built_on
+  attr_writer :used_options, :unused_options, :compiler, :source_modified_time
+
+  # @api internal
+  attr_writer :runtime_dependencies
+
+  # Instantiates a {Tab} for a new installation of a formula.
   def self.create(formula, compiler, stdlib)
     build = formula.build
     runtime_deps = formula.runtime_dependencies(undeclared: false)
@@ -92,7 +104,7 @@ class Tab
     end
 
     if attributes["source"]["spec"].nil?
-      version = PkgVersion.parse path.to_s.split("/").second_to_last
+      version = PkgVersion.parse(File.basename(File.dirname(path)))
       attributes["source"]["spec"] = if version.head?
         "head"
       else
@@ -116,6 +128,7 @@ class Tab
     new(attributes)
   end
 
+  # @api internal
   def self.for_keg(keg)
     path = keg/FILENAME
 
@@ -226,13 +239,15 @@ class Tab
       {
         "full_name"         => f.full_name,
         "version"           => f.version.to_s,
+        "revision"          => f.revision,
+        "pkg_version"       => f.pkg_version.to_s,
         "declared_directly" => formula.deps.include?(dep),
       }
     end
   end
 
   def initialize(attributes = {})
-    attributes.each { |key, value| instance_variable_set("@#{key}", value) }
+    attributes.each { |key, value| instance_variable_set(:"@#{key}", value) }
   end
 
   def any_args_or_options?
@@ -263,6 +278,7 @@ class Tab
     spec == :stable
   end
 
+  # @api internal
   def used_options
     Options.create(@used_options)
   end
@@ -320,11 +336,11 @@ class Tab
   end
 
   def stable_version
-    versions["stable"]&.then(&Version.method(:new))
+    versions["stable"]&.then { Version.new(_1) }
   end
 
   def head_version
-    versions["head"]&.then(&Version.method(:new))
+    versions["head"]&.then { Version.new(_1) }
   end
 
   def version_scheme
@@ -362,7 +378,7 @@ class Tab
     JSON.pretty_generate(attributes, options)
   end
 
-  # a subset of to_json that we care about for bottles
+  # A subset of to_json that we care about for bottles.
   def to_bottle_hash
     attributes = {
       "homebrew_version"     => homebrew_version,

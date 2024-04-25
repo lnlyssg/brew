@@ -24,6 +24,8 @@ module Cask
 
     sig { override.returns(T.nilable(::URL)) }
     def url
+      return if cask.url.nil?
+
       @url ||= ::URL.new(cask.url.to_s, cask.url.specs)
     end
 
@@ -34,6 +36,8 @@ module Cask
 
     sig { override.returns(T.nilable(Version)) }
     def version
+      return if cask.version.nil?
+
       @version ||= Version.new(cask.version)
     end
 
@@ -45,10 +49,10 @@ module Cask
         .returns(Pathname)
     }
     def fetch(quiet: nil, verify_download_integrity: true, timeout: nil)
-      downloader.shutup! if quiet
+      downloader.quiet! if quiet
 
       begin
-        super(verify_download_integrity: false, timeout: timeout)
+        super(verify_download_integrity: false, timeout:)
       rescue DownloadError => e
         error = CaskError.new("Download failed on Cask '#{cask}' with message: #{e.cause}")
         error.set_backtrace e.backtrace
@@ -64,7 +68,7 @@ module Cask
     def time_file_size(timeout: nil)
       raise ArgumentError, "not supported for this download strategy" unless downloader.is_a?(CurlDownloadStrategy)
 
-      T.cast(downloader, CurlDownloadStrategy).resolved_time_file_size(timeout: timeout)
+      T.cast(downloader, CurlDownloadStrategy).resolved_time_file_size(timeout:)
     end
 
     def basename

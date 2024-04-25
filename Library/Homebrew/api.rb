@@ -4,6 +4,7 @@
 require "api/analytics"
 require "api/cask"
 require "api/formula"
+require "base64" # TODO: Add this to the Gemfile or remove it before moving to Ruby 3.4.
 require "extend/cachable"
 
 module Homebrew
@@ -29,7 +30,7 @@ module Homebrew
       end
       raise ArgumentError, "No file found at #{Tty.underline}#{api_url}#{Tty.reset}" unless output.success?
 
-      cache[endpoint] = JSON.parse(output.stdout)
+      cache[endpoint] = JSON.parse(output.stdout, freeze: true)
     rescue JSON::ParserError
       raise ArgumentError, "Invalid JSON file: #{Tty.underline}#{api_url}#{Tty.reset}"
     end
@@ -48,19 +49,14 @@ module Homebrew
         odie "Need to download #{url} but cannot as root! Run `brew update` without `sudo` first then try again."
       end
 
-      # TODO: consider using more of Utils::Curl
-      curl_args = %W[
+      curl_args = Utils::Curl.curl_args(retries: 0) + %W[
         --compressed
         --speed-limit #{ENV.fetch("HOMEBREW_CURL_SPEED_LIMIT")}
         --speed-time #{ENV.fetch("HOMEBREW_CURL_SPEED_TIME")}
       ]
-      curl_args << "--progress-bar" unless Context.current.verbose?
-      curl_args << "--verbose" if Homebrew::EnvConfig.curl_verbose?
-      curl_args << "--silent" if !$stdout.tty? || Context.current.quiet?
 
-      insecure_download = (ENV["HOMEBREW_SYSTEM_CA_CERTIFICATES_TOO_OLD"].present? ||
-                           ENV["HOMEBREW_FORCE_BREWED_CA_CERTIFICATES"].present?) &&
-                          !(HOMEBREW_PREFIX/"etc/ca-certificates/cert.pem").exist?
+      insecure_download = DevelopmentTools.ca_file_substitution_required? ||
+                          DevelopmentTools.curl_substitution_required?
       skip_download = target.exist? &&
                       !target.empty? &&
                       (!Homebrew.auto_update_command? ||
@@ -73,9 +69,7 @@ module Homebrew
           args = curl_args.dup
           args.prepend("--time-cond", target.to_s) if target.exist? && !target.empty?
           if insecure_download
-            opoo "Using --insecure with curl to download #{endpoint} " \
-                 "because we need it to run `brew install ca-certificates`. " \
-                 "Checksums will still be verified."
+            opoo DevelopmentTools.insecure_download_warning(endpoint)
             args.append("--insecure")
           end
           unless skip_download
@@ -101,8 +95,8 @@ module Homebrew
         end
 
         mtime = insecure_download ? Time.new(1970, 1, 1) : Time.now
-        FileUtils.touch(target, mtime: mtime) unless skip_download
-        JSON.parse(target.read)
+        FileUtils.touch(target, mtime:) unless skip_download
+        JSON.parse(target.read, freeze: true)
       rescue JSON::ParserError
         target.unlink
         retry_count += 1
@@ -130,11 +124,12 @@ module Homebrew
 
     sig { params(json: Hash).returns(Hash) }
     def self.merge_variations(json)
+      return json unless json.key?("variations")
+
       bottle_tag = ::Utils::Bottles::Tag.new(system: Homebrew::SimulateSystem.current_os,
                                              arch:   Homebrew::SimulateSystem.current_arch)
 
-      if (variations = json["variations"].presence) &&
-         (variation = variations[bottle_tag.to_s].presence)
+      if (variation = json.dig("variations", bottle_tag.to_s).presence)
         json = json.merge(variation)
       end
 
@@ -175,11 +170,12 @@ module Homebrew
         return false, "signature mismatch"
       end
 
-      [true, JSON.parse(json_data["payload"])]
+      [true, JSON.parse(json_data["payload"], freeze: true)]
     end
 
     sig { params(path: Pathname).returns(T.nilable(Tap)) }
     def self.tap_from_source_download(path)
+      path = path.expand_path
       source_relative_path = path.relative_path_from(Homebrew::API::HOMEBREW_CACHE_API_SOURCE)
       return if source_relative_path.to_s.start_with?("../")
 
@@ -187,6 +183,11 @@ module Homebrew
       return if org.blank? || repo.blank?
 
       Tap.fetch(org, repo)
+    end
+
+    sig { returns(T::Boolean) }
+    def self.internal_json_v3?
+      ENV["HOMEBREW_INTERNAL_JSON_V3"].present?
     end
   end
 

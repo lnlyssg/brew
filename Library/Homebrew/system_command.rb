@@ -1,34 +1,40 @@
 # typed: true
 # frozen_string_literal: true
 
+require "attrable"
 require "open3"
 require "plist"
 require "shellwords"
 
+require "context"
 require "extend/io"
-require "extend/predicable"
-
-require "extend/time"
+require "utils/timer"
 
 # Class for running sub-processes and capturing their output and exit status.
 #
-# @api private
+# @api internal
 class SystemCommand
-  using TimeRemaining
-
   # Helper functions for calling {SystemCommand.run}.
+  #
+  # @api internal
   module Mixin
+    # Run a fallible system command.
+    #
+    # @api internal
     def system_command(executable, **options)
       SystemCommand.run(executable, **options)
     end
 
+    # Run an infallible system command.
+    #
+    # @api internal
     def system_command!(command, **options)
       SystemCommand.run!(command, **options)
     end
   end
 
   include Context
-  extend Predicable
+  extend Attrable
 
   def self.run(executable, **options)
     new(executable, **options).run!
@@ -47,10 +53,20 @@ class SystemCommand
     each_output_line do |type, line|
       case type
       when :stdout
-        $stdout << redact_secrets(line, @secrets) if print_stdout?
+        case @print_stdout
+        when true
+          $stdout << redact_secrets(line, @secrets)
+        when :debug
+          $stderr << redact_secrets(line, @secrets) if debug?
+        end
         @output << [:stdout, line]
       when :stderr
-        $stderr << redact_secrets(line, @secrets) if print_stderr?
+        case @print_stderr
+        when true
+          $stderr << redact_secrets(line, @secrets)
+        when :debug
+          $stderr << redact_secrets(line, @secrets) if debug?
+        end
         @output << [:stderr, line]
       end
     end
@@ -69,8 +85,8 @@ class SystemCommand
       env:          T::Hash[String, String],
       input:        T.any(String, T::Array[String]),
       must_succeed: T::Boolean,
-      print_stdout: T::Boolean,
-      print_stderr: T::Boolean,
+      print_stdout: T.any(T::Boolean, Symbol),
+      print_stderr: T.any(T::Boolean, Symbol),
       debug:        T.nilable(T::Boolean),
       verbose:      T.nilable(T::Boolean),
       secrets:      T.any(String, T::Array[String]),
@@ -98,7 +114,14 @@ class SystemCommand
     @executable = executable
     @args = args
 
-    raise ArgumentError, "sudo_as_root cannot be set if sudo is false" if !sudo && sudo_as_root
+    raise ArgumentError, "`sudo_as_root` cannot be set if sudo is false" if !sudo && sudo_as_root
+
+    if print_stdout.is_a?(Symbol) && print_stdout != :debug
+      raise ArgumentError, "`print_stdout` is not a valid symbol"
+    end
+    if print_stderr.is_a?(Symbol) && print_stderr != :debug
+      raise ArgumentError, "`print_stderr` is not a valid symbol"
+    end
 
     @sudo = sudo
     @sudo_as_root = sudo_as_root
@@ -128,7 +151,7 @@ class SystemCommand
 
   attr_reader :executable, :args, :input, :chdir, :env
 
-  attr_predicate :sudo?, :sudo_as_root?, :print_stdout?, :print_stderr?, :must_succeed?
+  attr_predicate :sudo?, :sudo_as_root?, :must_succeed?
 
   sig { returns(T::Boolean) }
   def debug?
@@ -157,11 +180,24 @@ class SystemCommand
     set_variables
   end
 
+  sig { returns(T.nilable(String)) }
+  def homebrew_sudo_user
+    ENV.fetch("HOMEBREW_SUDO_USER", nil)
+  end
+
   sig { returns(T::Array[String]) }
   def sudo_prefix
-    user_flags = []
-    user_flags += ["-u", "root"] if sudo_as_root?
     askpass_flags = ENV.key?("SUDO_ASKPASS") ? ["-A"] : []
+    user_flags = []
+    if Homebrew::EnvConfig.sudo_through_sudo_user?
+      raise ArgumentError, "HOMEBREW_SUDO_THROUGH_SUDO_USER set but SUDO_USER unset!" if homebrew_sudo_user.blank?
+
+      user_flags += ["--prompt", "Password for %p:", "-u", homebrew_sudo_user,
+                     *askpass_flags,
+                     "-E", *env_args,
+                     "--", "/usr/bin/sudo"]
+    end
+    user_flags += ["-u", "root"] if sudo_as_root?
     ["/usr/bin/sudo", *user_flags, *askpass_flags, "-E", *env_args, "--"]
   end
 
@@ -213,9 +249,13 @@ class SystemCommand
     write_input_to(raw_stdin)
     raw_stdin.close_write
 
+    thread_context = Context.current
     thread_ready_queue = Queue.new
     thread_done_queue = Queue.new
     line_thread = Thread.new do
+      # Ensure the new thread inherits the current context.
+      Context.current = thread_context
+
       Thread.handle_interrupt(ProcessTerminatedInterrupt => :never) do
         thread_ready_queue << true
         each_line_from [raw_stdout, raw_stderr], &block
@@ -226,7 +266,7 @@ class SystemCommand
     end
 
     end_time = Time.now + @timeout if @timeout
-    raise Timeout::Error if raw_wait_thr.join(end_time&.remaining).nil?
+    raise Timeout::Error if raw_wait_thr.join(Utils::Timer.remaining(end_time)).nil?
 
     @status = raw_wait_thr.value
 
@@ -244,7 +284,7 @@ class SystemCommand
 
   sig { params(raw_stdin: IO).void }
   def write_input_to(raw_stdin)
-    input.each(&raw_stdin.method(:write))
+    input.each { raw_stdin.write(_1) }
   end
 
   sig { params(sources: T::Array[IO], _block: T.proc.params(type: Symbol, line: String).void).void }
@@ -256,7 +296,7 @@ class SystemCommand
 
     pending_interrupt = T.let(false, T::Boolean)
 
-    until pending_interrupt
+    until pending_interrupt || sources.empty?
       readable_sources = T.let([], T::Array[IO])
       begin
         Thread.handle_interrupt(ProcessTerminatedInterrupt => :on_blocking) do
@@ -267,7 +307,7 @@ class SystemCommand
         pending_interrupt = true
       end
 
-      break if readable_sources.none? do |source|
+      readable_sources.each do |source|
         loop do
           line = source.readline_nonblock || ""
           yield(sources.fetch(source), line)
@@ -275,9 +315,8 @@ class SystemCommand
       rescue EOFError
         source.close_read
         sources.delete(source)
-        sources.any?
       rescue IO::WaitReadable
-        true
+        # We've got all the data that was ready, but the other end of the stream isn't finished yet
       end
     end
 
@@ -375,7 +414,3 @@ class SystemCommand
     private :warn_plist_garbage
   end
 end
-
-# Make `system_command` available everywhere.
-# FIXME: Include this explicitly only where it is needed.
-include SystemCommand::Mixin # rubocop:disable Style/MixinUsage

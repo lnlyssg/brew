@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-describe Cask::Cask, :cask do
+RSpec.describe Cask::Cask, :cask do
   let(:cask) { described_class.new("versioned-cask") }
 
   context "when multiple versions are installed" do
@@ -46,13 +46,13 @@ describe Cask::Cask, :cask do
       expect(c.token).to eq("caffeine")
     end
 
-    it "returns an instance of the Cask from a URL" do
+    it "returns an instance of the Cask from a URL", :needs_utils_curl, :no_api do
       c = Cask::CaskLoader.load("file://#{tap_path}/Casks/local-caffeine.rb")
       expect(c).to be_a(described_class)
       expect(c.token).to eq("local-caffeine")
     end
 
-    it "raises an error when failing to download a Cask from a URL" do
+    it "raises an error when failing to download a Cask from a URL", :needs_utils_curl, :no_api do
       expect do
         Cask::CaskLoader.load("file://#{tap_path}/Casks/notacask.rb")
       end.to raise_error(Cask::CaskUnavailableError)
@@ -107,8 +107,8 @@ describe Cask::Cask, :cask do
         expectations.each do |installed_version, expected_output|
           context "when version #{installed_version.inspect} is installed and the tap version is #{tap_version}" do
             it {
-              allow(cask).to receive(:installed_version).and_return(installed_version)
-              allow(cask).to receive(:version).and_return(Cask::DSL::Version.new(tap_version))
+              allow(cask).to receive_messages(installed_version:,
+                                              version:           Cask::DSL::Version.new(tap_version))
               expect(cask).to receive(:outdated_version).and_call_original
               expect(subject).to eq expected_output
             }
@@ -136,12 +136,12 @@ describe Cask::Cask, :cask do
           context "when versions #{installed_version} are installed and the " \
                   "tap version is #{tap_version}, #{"not " unless greedy}greedy " \
                   "and sha is #{"not " unless outdated_sha}outdated" do
-            subject { cask.outdated_version(greedy: greedy) }
+            subject { cask.outdated_version(greedy:) }
 
             it {
-              allow(cask).to receive(:installed_version).and_return(installed_version)
-              allow(cask).to receive(:version).and_return(Cask::DSL::Version.new(tap_version))
-              allow(cask).to receive(:outdated_download_sha?).and_return(outdated_sha)
+              allow(cask).to receive_messages(installed_version:,
+                                              version:                Cask::DSL::Version.new(tap_version),
+                                              outdated_download_sha?: outdated_sha)
               expect(cask).to receive(:outdated_version).and_call_original
               expect(subject).to eq expected_output
             }
@@ -219,7 +219,11 @@ describe Cask::Cask, :cask do
       it "returns expected hash" do
         allow(MacOS).to receive(:version).and_return(MacOSVersion.new("13"))
 
-        hash = Cask::CaskLoader.load("everything").to_h
+        cask = Cask::CaskLoader.load("everything")
+
+        expect(cask.tap).to receive(:git_head).and_return("abcdef1234567890abcdef1234567890abcdef12")
+
+        hash = cask.to_h
 
         expect(hash).to be_a(Hash)
         expect(JSON.pretty_generate(hash)).to eq(expected_json)

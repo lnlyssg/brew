@@ -2,6 +2,7 @@
 # frozen_string_literal: true
 
 require "cask/artifact/abstract_artifact"
+require "extend/hash/keys"
 
 module Cask
   module Artifact
@@ -93,7 +94,7 @@ module Cask
       end
 
       def to_h
-        { path: path }.tap do |h|
+        { path: }.tap do |h|
           h[:args] = args unless is_a?(ManualInstaller)
         end
       end
