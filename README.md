@@ -21,9 +21,9 @@
 >
 > ```shell
 > git clone https://github.com/rbenv/ruby-build.git "$(rbenv root)"/plugins/ruby-build  # apt's ruby-build is too out of date
-> rbenv install 2.6.10
-> rbenv shell 2.6.10
-> export HOMEBREW_BREW_GIT_REMOTE=https://github.com/huyz/brew-for-linux-arm
+> rbenv install 3.1.4
+> rbenv shell 3.1.4
+> export HOMEBREW_BREW_GIT_REMOTE=https://github.com/lnlyssg/brew
 > export HOMEBREW_DEVELOPER=1
 > /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh | sed '532s/abort/warn/')"
 > ```
@@ -42,11 +42,11 @@
 > if command -v rbenv &>/dev/null; then
 >   export PATH="${PATH//$(rbenv root)\/shims:/}"
 >   eval "$(rbenv init -)"
->   rbenv shell 2.6.10
+>   rbenv shell 3.1.4
 > else
 >   echo "Warning: rbenv not found" >&2
 > fi
-> HOMEBREW_BREW_GIT_REMOTE=https://github.com/huyz/brew-for-linux-arm HOMEBREW_DEVELOPER=1 exec /home/linuxbrew/.linuxbrew/bin/brew "$@"
+> HOMEBREW_BREW_GIT_REMOTE=https://github.com/lnlyssg/brew HOMEBREW_DEVELOPER=1 exec /home/linuxbrew/.linuxbrew/bin/brew "$@"
 > ```
 >
 > NOTE: Of course, this is only half the battle. Many official formulas won't work because they weren't written with Linux ARM in mind. (For example, as of 2023-08-26, installing python, which the rust formula requires, will fail.)
