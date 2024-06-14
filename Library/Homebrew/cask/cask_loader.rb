@@ -9,8 +9,6 @@ require "extend/hash/keys"
 
 module Cask
   # Loads a cask from various sources.
-  #
-  # @api private
   module CaskLoader
     extend Context
 
@@ -127,7 +125,9 @@ module Cask
         @content = path.read(encoding: "UTF-8")
         @config = config
 
-        return FromAPILoader.new(token, from_json: JSON.parse(@content)).load(config:) if path.extname == ".json"
+        if path.extname == ".json"
+          return FromAPILoader.new(token, from_json: JSON.parse(@content), path:).load(config:)
+        end
 
         begin
           instance_eval(content, path).tap do |cask|
@@ -280,10 +280,11 @@ module Cask
         new("#{tap}/#{token}")
       end
 
-      sig { params(token: String, from_json: Hash).void }
-      def initialize(token, from_json: T.unsafe(nil))
+      sig { params(token: String, from_json: Hash, path: T.nilable(Pathname)).void }
+      def initialize(token, from_json: T.unsafe(nil), path: nil)
         @token = token.sub(%r{^homebrew/(?:homebrew-)?cask/}i, "")
-        @path = CaskLoader.default_path(@token)
+        @sourcefile_path = path
+        @path = path || CaskLoader.default_path(@token)
         @from_json = from_json
       end
 
@@ -292,6 +293,7 @@ module Cask
 
         cask_options = {
           loaded_from_api: true,
+          sourcefile_path: @sourcefile_path,
           source:          JSON.pretty_generate(json_cask),
           config:,
           loader:          self,
@@ -317,7 +319,6 @@ module Cask
           end
 
           url json_cask[:url], **json_cask.fetch(:url_specs, {}) if json_cask[:url].present?
-          appcast json_cask[:appcast] if json_cask[:appcast].present?
           json_cask[:name]&.each do |cask_name|
             name cask_name
           end
@@ -457,6 +458,7 @@ module Cask
 
         loaders = Tap.select { |tap| tap.installed? && !tap.core_cask_tap? }
                      .filter_map { |tap| super("#{tap}/#{token}", warn:) }
+                     .uniq(&:path)
                      .select { |tap| tap.path.exist? }
 
         case loaders.count

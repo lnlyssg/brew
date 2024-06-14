@@ -6,12 +6,9 @@ require "utils/bottles"
 require "attrable"
 require "formula"
 require "cask/cask_loader"
-require "set"
 
 module Homebrew
   # Helper class for cleaning up the Homebrew cache.
-  #
-  # @api private
   class Cleanup
     CLEANUP_DEFAULT_DAYS = Homebrew::EnvConfig.cleanup_periodic_full_days.to_i.freeze
     private_constant :CLEANUP_DEFAULT_DAYS
@@ -110,7 +107,7 @@ module Homebrew
 
         version = if HOMEBREW_BOTTLES_EXTNAME_REGEX.match?(to_s)
           begin
-            Utils::Bottles.resolve_version(pathname)
+            Utils::Bottles.resolve_version(pathname).to_s
           rescue
             nil
           end
@@ -290,7 +287,11 @@ module Homebrew
           cleanup_formula(formula, quiet:, ds_store: false, cache_db: false)
         end
 
-        Cleanup.autoremove(dry_run: dry_run?) if Homebrew::EnvConfig.autoremove?
+        if ENV["HOMEBREW_AUTOREMOVE"].present?
+          opoo "HOMEBREW_AUTOREMOVE is now a no-op as it is the default behaviour. " \
+               "Set HOMEBREW_NO_AUTOREMOVE=1 to disable it."
+        end
+        Cleanup.autoremove(dry_run: dry_run?) unless Homebrew::EnvConfig.no_autoremove?
 
         cleanup_cache
         cleanup_empty_api_source_directories
@@ -378,7 +379,7 @@ module Homebrew
     def cache_files
       files = cache.directory? ? cache.children : []
       cask_files = (cache/"Cask").directory? ? (cache/"Cask").children : []
-      api_source_files = (cache/"api-source").glob("*/*/*/*/*") # org/repo/git_head/type/file.rb
+      api_source_files = (cache/"api-source").glob("*/*/*/*/*") # `<org>/<repo>/<git_head>/<type>/<token>.rb`
       gh_actions_artifacts = (cache/"gh-actions-artifact").directory? ? (cache/"gh-actions-artifact").children : []
 
       files.map { |path| { path:, type: nil } } +
@@ -573,8 +574,8 @@ module Homebrew
       HOMEBREW_PREFIX.glob("lib/python*/site-packages").each do |site_packages|
         site_packages.each_child do |child|
           next unless child.directory?
-          # TODO: Work out a sensible way to clean up pip's, setuptools', and wheel's
-          #       {dist,site}-info directories. Alternatively, consider always removing
+          # TODO: Work out a sensible way to clean up `pip`'s, `setuptools`' and `wheel`'s
+          #       `{dist,site}-info` directories. Alternatively, consider always removing
           #       all `-info` directories, because we may not be making use of them.
           next if child.basename.to_s.end_with?("-info")
 
@@ -705,7 +706,7 @@ module Homebrew
 
       require "uninstall"
 
-      kegs_by_rack = removable_formulae.map(&:any_installed_keg).group_by(&:rack)
+      kegs_by_rack = removable_formulae.filter_map(&:any_installed_keg).group_by(&:rack)
       Uninstall.uninstall_kegs(kegs_by_rack)
 
       # The installed formula cache will be invalid after uninstalling.

@@ -14,8 +14,6 @@ require "utils/shared_audits"
 
 module Cask
   # Audit a cask for various problems.
-  #
-  # @api private
   class Audit
     include SystemCommand::Mixin
     include ::Utils::Curl
@@ -199,7 +197,7 @@ module Cask
     def audit_description
       # Fonts seldom benefit from descriptions and requiring them disproportionately
       # increases the maintenance burden.
-      return if cask.tap == "homebrew/cask-fonts"
+      return if cask.tap == "homebrew/cask" && cask.token.include?("font-")
 
       add_error("Cask should have a description. Please add a `desc` stanza.", strict_only: true) if cask.desc.blank?
     end
@@ -291,7 +289,7 @@ module Cask
 
     sig { params(livecheck_result: T.any(NilClass, T::Boolean, Symbol)).void }
     def audit_hosting_with_livecheck(livecheck_result: audit_livecheck_version)
-      return if cask.discontinued? || cask.deprecated? || cask.disabled?
+      return if cask.deprecated? || cask.disabled?
       return if cask.version&.latest?
       return unless cask.url
       return if block_url_offline?
@@ -320,13 +318,18 @@ module Cask
       return if block_url_offline?
 
       odebug "Auditing URL format"
-      if bad_sourceforge_url?
-        add_error "SourceForge URL format incorrect. See #{Formatter.url(SOURCEFORGE_OSDN_REFERENCE_URL)}",
-                  location: cask.url.location
-      elsif bad_osdn_url?
-        add_error "OSDN URL format incorrect. See #{Formatter.url(SOURCEFORGE_OSDN_REFERENCE_URL)}",
-                  location: cask.url.location
-      end
+      return unless bad_sourceforge_url?
+
+      add_error "SourceForge URL format incorrect. See #{Formatter.url(SOURCEFORGE_OSDN_REFERENCE_URL)}",
+                location: cask.url.location
+    end
+
+    def audit_download_url_is_osdn
+      return unless cask.url
+      return if block_url_offline?
+      return unless bad_osdn_url?
+
+      add_error "OSDN download urls are disabled.", location: cask.url.location, strict_only: true
     end
 
     VERIFIED_URL_REFERENCE_URL = "https://docs.brew.sh/Cask-Cookbook#when-url-and-homepage-domains-differ-add-verified"
@@ -432,7 +435,7 @@ module Cask
       add_error "cask token contains .app" if token.end_with? ".app"
 
       match_data = /-(?<designation>alpha|beta|rc|release-candidate)$/.match(cask.token)
-      if match_data && cask.tap&.official? && cask.tap != "homebrew/cask-versions"
+      if match_data && cask.tap&.official?
         add_error "cask token contains version designation '#{match_data[:designation]}'"
       end
 
@@ -482,13 +485,25 @@ module Cask
       odebug "Auditing signing"
 
       extract_artifacts do |artifacts, tmpdir|
+        is_container = artifacts.any? { |a| a.is_a?(Artifact::App) || a.is_a?(Artifact::Pkg) }
+
         artifacts.each do |artifact|
+          next if artifact.is_a?(Artifact::Binary) && is_container == true
+
           artifact_path = artifact.is_a?(Artifact::Pkg) ? artifact.path : artifact.source
+
           path = tmpdir/artifact_path.relative_path_from(cask.staged_path)
 
-          next unless path.exist?
-
-          result = system_command("spctl", args: ["--assess", "--type", "install", path], print_stderr: false)
+          result = case artifact
+          when Artifact::Pkg
+            system_command("spctl", args: ["--assess", "--type", "install", path], print_stderr: false)
+          when Artifact::App
+            system_command("spctl", args: ["--assess", "--type", "execute", path], print_stderr: false)
+          when Artifact::Binary
+            system_command("codesign",  args: ["--verify", path], print_stderr: false)
+          else
+            add_error "Unknown artifact type: #{artifact.class}", location: cask.url.location
+          end
 
           next if result.success?
 
@@ -519,6 +534,12 @@ module Cask
 
       @tmpdir ||= Pathname(Dir.mktmpdir("cask-audit", HOMEBREW_TEMP))
 
+      # Clean up tmp dir when @tmpdir object is destroyed
+      ObjectSpace.define_finalizer(
+        @tmpdir,
+        proc { FileUtils.remove_entry(@tmpdir) },
+      )
+
       ohai "Downloading and extracting artifacts"
 
       downloaded_path = download.fetch
@@ -528,6 +549,13 @@ module Cask
 
       # Extract the container to the temporary directory.
       primary_container.extract_nestedly(to: @tmpdir, basename: downloaded_path.basename, verbose: false)
+
+      if (nested_container = @cask.container&.nested)
+        FileUtils.chmod_R "+rw", @tmpdir/nested_container, force: true, verbose: false
+        UnpackStrategy.detect(@tmpdir/nested_container, merge_xattrs: true)
+                      .extract_nestedly(to: @tmpdir, verbose: false)
+      end
+
       @artifacts_extracted = true # Set the flag to indicate that extraction has occurred.
 
       # Yield the artifacts and temp directory to the block if provided.
@@ -658,8 +686,6 @@ module Cask
 
     sig { void }
     def audit_github_prerelease_version
-      return if cask.tap == "homebrew/cask-versions"
-
       odebug "Auditing GitHub prerelease"
       user, repo = get_repo_data(%r{https?://github\.com/([^/]+)/([^/]+)/?.*}) if online?
       return if user.nil?
@@ -672,8 +698,6 @@ module Cask
 
     sig { void }
     def audit_gitlab_prerelease_version
-      return if cask.tap == "homebrew/cask-versions"
-
       user, repo = get_repo_data(%r{https?://gitlab\.com/([^/]+)/([^/]+)/?.*}) if online?
       return if user.nil?
 
@@ -687,8 +711,8 @@ module Cask
 
     sig { void }
     def audit_github_repository_archived
-      # Deprecated/disabled casks may have an archived repo.
-      return if cask.discontinued? || cask.deprecated? || cask.disabled?
+      # Deprecated/disabled casks may have an archived repository.
+      return if cask.deprecated? || cask.disabled?
 
       user, repo = get_repo_data(%r{https?://github\.com/([^/]+)/([^/]+)/?.*}) if online?
       return if user.nil?
@@ -701,8 +725,8 @@ module Cask
 
     sig { void }
     def audit_gitlab_repository_archived
-      # Deprecated/disabled casks may have an archived repo.
-      return if cask.discontinued? || cask.deprecated? || cask.disabled?
+      # Deprecated/disabled casks may have an archived repository.
+      return if cask.deprecated? || cask.disabled?
 
       user, repo = get_repo_data(%r{https?://gitlab\.com/([^/]+)/([^/]+)/?.*}) if online?
       return if user.nil?
@@ -874,7 +898,7 @@ module Cask
 
     sig { returns(T::Boolean) }
     def bad_sourceforge_url?
-      bad_url_format?(/sourceforge/,
+      bad_url_format?(%r{((downloads|\.dl)\.|//)sourceforge},
                       [
                         %r{\Ahttps://sourceforge\.net/projects/[^/]+/files/latest/download\Z},
                         %r{\Ahttps://downloads\.sourceforge\.net/(?!(project|sourceforge)/)},
@@ -883,7 +907,7 @@ module Cask
 
     sig { returns(T::Boolean) }
     def bad_osdn_url?
-      bad_url_format?(/osd/, [%r{\Ahttps?://([^/]+.)?dl\.osdn\.jp/}])
+      domain.match?(%r{^(?:\w+\.)*osdn\.jp(?=/|$)})
     end
 
     # sig { returns(String) }

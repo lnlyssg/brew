@@ -78,8 +78,6 @@ end
 class FormulaSpecificationError < StandardError; end
 
 # Raised when a deprecated method is used.
-#
-# @api private
 class MethodDeprecatedError < StandardError
   attr_accessor :issues_url
 end
@@ -155,11 +153,10 @@ class FormulaUnavailableError < FormulaOrCaskUnavailableError
 end
 
 # Shared methods for formula class errors.
-#
-# @api private
 module FormulaClassUnavailableErrorModule
   attr_reader :path, :class_name, :class_list
 
+  sig { returns(String) }
   def to_s
     s = super
     s += "\nIn formula file: #{path}"
@@ -199,8 +196,6 @@ class FormulaClassUnavailableError < FormulaUnavailableError
 end
 
 # Shared methods for formula unreadable errors.
-#
-# @api private
 module FormulaUnreadableErrorModule
   attr_reader :formula_error
 
@@ -232,6 +227,7 @@ class TapFormulaUnavailableError < FormulaUnavailableError
     super "#{tap}/#{name}"
   end
 
+  sig { returns(String) }
   def to_s
     s = super
     s += "\nPlease tap it and then try again: brew tap #{tap}" unless tap.installed?
@@ -487,8 +483,8 @@ class BuildError < RuntimeError
   sig { returns(T::Array[T.untyped]) }
   def fetch_issues
     GitHub.issues_for_formula(formula.name, tap: formula.tap, state: "open", type: "issue")
-  rescue GitHub::API::RateLimitExceededError => e
-    opoo e.message
+  rescue GitHub::API::Error => e
+    opoo "Unable to query GitHub for recent issues on the tap\n#{e.message}"
     []
   end
 
@@ -569,7 +565,7 @@ class UnbottledError < RuntimeError
   end
 end
 
-# Raised by Homebrew.install, Homebrew.reinstall, and Homebrew.upgrade
+# Raised by `Homebrew.install`, `Homebrew.reinstall` and `Homebrew.upgrade`
 # if the user passes any flags/environment that would case a bottle-only
 # installation on a system without build tools to fail.
 class BuildFlagsError < RuntimeError

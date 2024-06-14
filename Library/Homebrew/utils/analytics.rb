@@ -8,8 +8,6 @@ require "api"
 
 module Utils
   # Helper module for fetching and reporting analytics data.
-  #
-  # @api private
   module Analytics
     INFLUX_BUCKET = "analytics"
     INFLUX_TOKEN = "iVdsgJ_OjvTYGAA79gOfWlA_fX0QCuj4eYUNdb-qVUTrC3tp3JTWCADVNE9HxV0kp2ZjIK9tuthy_teX4szr9A=="
@@ -145,9 +143,12 @@ module Utils
         }
 
         # Strip out any flag values to reduce cardinality and preserve privacy.
-        command = step_command_short.split
-                                    .map { |arg| arg.sub(/=.*/, "=") }
-                                    .join(" ")
+        # Sort options to ensure consistent ordering and improve readability.
+        command_and_package, options =
+          step_command_short.split
+                            .map { |arg| arg.sub(/=.*/, "=") }
+                            .partition { |arg| !arg.start_with?("-") }
+        command = (command_and_package + options.sort).join(" ")
 
         # Fields can have high cardinality.
         fields = { command: }

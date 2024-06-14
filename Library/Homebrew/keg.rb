@@ -7,8 +7,6 @@ require "lock_file"
 require "extend/cachable"
 
 # Installation prefix of a formula.
-#
-# @api private
 class Keg
   extend Cachable
 
@@ -155,9 +153,10 @@ class Keg
   extend Forwardable
 
   def_delegators :path,
-                 :to_s, :hash, :abv, :disk_usage, :file_count, :directory?, :exist?, :/,
+                 :to_path, :hash, :abv, :disk_usage, :file_count, :directory?, :exist?, :/,
                  :join, :rename, :find
 
+  sig { params(path: Pathname).void }
   def initialize(path)
     path = path.resolved_path if path.to_s.start_with?("#{HOMEBREW_PREFIX}/opt/")
     raise "#{path} is not a valid keg" if path.parent.parent.realpath != HOMEBREW_CELLAR.realpath
@@ -175,7 +174,8 @@ class Keg
     path.parent
   end
 
-  alias to_path to_s
+  sig { returns(String) }
+  def to_s = path.to_s
 
   sig { returns(String) }
   def inspect
@@ -505,6 +505,7 @@ class Keg
     end
   end
 
+  sig { returns(Tab) }
   def tab
     Tab.for_keg(self)
   end
@@ -551,8 +552,8 @@ class Keg
 
     src = dst.resolved_path
 
-    # src itself may be a symlink, so check lstat to ensure we are dealing with
-    # a directory, and not a symlink pointing at a directory (which needs to be
+    # `src` itself may be a symlink, so check lstat to ensure we are dealing with
+    # a directory and not a symlink pointing to a directory (which needs to be
     # treated as a file). In other words, we only want to resolve one symlink.
 
     begin

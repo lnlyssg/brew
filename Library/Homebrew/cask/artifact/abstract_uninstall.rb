@@ -12,8 +12,6 @@ require "system_command"
 module Cask
   module Artifact
     # Abstract superclass for uninstall artifacts.
-    #
-    # @api private
     class AbstractUninstall < AbstractArtifact
       include SystemCommand::Mixin
 
@@ -40,7 +38,7 @@ module Cask
       def initialize(cask, **directives)
         directives.assert_valid_keys(*ORDERED_DIRECTIVES)
 
-        super(cask, **directives)
+        super
         directives[:signal] = Array(directives[:signal]).flatten.each_slice(2).to_a
         @directives = directives
 

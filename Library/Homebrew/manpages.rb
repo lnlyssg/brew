@@ -9,8 +9,6 @@ TARGET_MAN_PATH = (HOMEBREW_REPOSITORY/"manpages").freeze
 TARGET_DOC_PATH = (HOMEBREW_REPOSITORY/"docs").freeze
 module Homebrew
   # Helper functions for generating homebrew manual.
-  #
-  # @api private
   module Manpages
     Variables = Struct.new(
       :alumni,
@@ -28,8 +26,6 @@ module Homebrew
     )
 
     def self.regenerate_man_pages(quiet:)
-      Homebrew.install_bundler_gems!(groups: ["man"])
-
       require "kramdown"
       require "manpages/parser/ronn"
       require "manpages/converter/kramdown"
@@ -146,7 +142,7 @@ module Homebrew
 
     sig { returns(String) }
     def self.global_cask_options_manpage
-      lines = ["These options are applicable to the `install`, `reinstall`, and `upgrade` " \
+      lines = ["These options are applicable to the `install`, `reinstall` and `upgrade` " \
                "subcommands with the `--cask` switch.\n"]
       lines += Homebrew::CLI::Parser.global_cask_options.map do |_, long, kwargs|
         generate_option_doc(nil, long.chomp("="), kwargs.fetch(:description))

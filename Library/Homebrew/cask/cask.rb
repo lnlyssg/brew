@@ -12,8 +12,6 @@ require "extend/api_hashable"
 
 module Cask
   # An instance of a cask.
-  #
-  # @api private
   class Cask
     extend Forwardable
     extend Attrable
@@ -35,7 +33,6 @@ module Cask
 
     attr_predicate :loaded_from_api?
 
-    # @api private
     def self.all(eval_all: false)
       if !eval_all && !Homebrew::EnvConfig.eval_all?
         raise ArgumentError, "Cask::Cask#all cannot be used without `--eval-all` or HOMEBREW_EVAL_ALL"
@@ -81,7 +78,8 @@ module Cask
       @allow_reassignment = allow_reassignment
       @loaded_from_api = loaded_from_api
       @loader = loader
-      # Sorbet has trouble with bound procs assigned to ivars: https://github.com/sorbet/sorbet/issues/6843
+      # Sorbet has trouble with bound procs assigned to instance variables:
+      # https://github.com/sorbet/sorbet/issues/6843
       instance_variable_set(:@block, block)
 
       @default_config = config || Config.new
@@ -325,11 +323,11 @@ module Cask
       @ruby_source_checksum = { sha256: ruby_source_sha256 }
     end
 
-    # Alias for {#token}.
-    #
-    # @api internal
+    # @api public
+    sig { returns(String) }
     def to_s = token
 
+    sig { returns(String) }
     def inspect
       "#<Cask #{token}#{sourcefile_path&.to_s&.prepend(" ")}>"
     end
@@ -354,7 +352,6 @@ module Cask
         "homepage"             => homepage,
         "url"                  => url,
         "url_specs"            => url_specs,
-        "appcast"              => appcast,
         "version"              => version,
         "installed"            => installed_version,
         "installed_time"       => install_time&.to_i,
@@ -381,7 +378,6 @@ module Cask
       }
     end
 
-    # @private
     def to_internal_api_hash
       api_hash = {
         "token"              => token,
@@ -424,7 +420,6 @@ module Cask
     HASH_KEYS_TO_SKIP = %w[outdated installed versions].freeze
     private_constant :HASH_KEYS_TO_SKIP
 
-    # @private
     def to_hash_with_variations(hash_method: :to_h)
       case hash_method
       when :to_h
@@ -445,6 +440,7 @@ module Cask
           MacOSVersion::SYMBOLS.keys.product(OnSystem::ARCH_OPTIONS).each do |os, arch|
             bottle_tag = ::Utils::Bottles::Tag.new(system: os, arch:)
             next unless bottle_tag.valid_combination?
+            next if depends_on.macos && !depends_on.macos.allows?(bottle_tag.to_macos_version)
 
             Homebrew::SimulateSystem.with(os:, arch:) do
               refresh

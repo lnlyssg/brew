@@ -102,7 +102,7 @@ RSpec.configure do |config|
   end
   config.mock_with :rspec do |mocks|
     # Prevents you from mocking or stubbing a method that does not exist on
-    # a real object. This is generally recommended, and will default to
+    # a real object. This is generally recommended and will default to
     # `true` in RSpec 4.
     mocks.verify_partial_doubles = true
   end
@@ -158,6 +158,11 @@ RSpec.configure do |config|
 
   config.before(:each, :needs_network) do
     skip "Requires network connection." unless ENV["HOMEBREW_TEST_ONLINE"]
+  end
+
+  config.before(:each, :needs_homebrew_core) do
+    core_tap_path = "#{ENV.fetch("HOMEBREW_LIBRARY")}/Taps/homebrew/homebrew-core"
+    skip "Requires homebrew/core to be tapped." unless Dir.exist?(core_tap_path)
   end
 
   config.before do |example|
@@ -305,6 +310,7 @@ end
 
 RSpec::Matchers.define_negated_matcher :not_to_output, :output
 RSpec::Matchers.alias_matcher :have_failed, :be_failed
+RSpec::Matchers.define_negated_matcher :exclude, :include
 
 # Match consecutive elements in an array.
 RSpec::Matchers.define :array_including_cons do |*cons|
